@@ -13,31 +13,30 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v1.9.0"
+VERSION = "v1.9.1"
 PHT = pytz.timezone('Asia/Manila')
 
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 IS_SENDING = False
 USER_STATE = {}
-TEMP_CLIENTS = {} # Stores temporary clients during login
+TEMP_CLIENTS = {}
 
 async def shared_outreach_logic(event, mode_name):
     global IS_SENDING
     IS_SENDING = True
-    await event.respond(f"⚡ **Blast Engine Active** ({mode_name})")
+    await event.respond(f"⚡ **Engine Active** ({mode_name})")
     while IS_SENDING:
         msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
         message_text = msg_data.data['value'] if msg_data.data else "Hello!"
         res = supabase.table("targets").select("*").eq("status", "pending").order("id").limit(1).execute()
         if not res.data:
-            await event.respond("✅ **Queue Finished.**")
+            await event.respond("✅ **Queue Empty.**")
             break
         target = res.data[0]
         username = target['username']
         success = False
         for sess_file in glob.glob("*.session"):
-            if not IS_SENDING: break
-            if "bot_control" in sess_file: continue
+            if not IS_SENDING or "bot_control" in sess_file: continue
             client_name = sess_file.replace('.session', '')
             try:
                 async with TelegramClient(client_name, API_ID, API_HASH) as client:
@@ -67,12 +66,9 @@ async def start(event):
 async def callback(event):
     if event.data == b"add_acc":
         USER_STATE[event.sender_id] = "waiting_phone"
-        await event.respond("📱 **Enter Phone Number:**\n(Include country code, e.g., +639123456789)")
+        await event.respond("📱 **Enter Phone Number:**\n(e.g., +639123456789)")
     elif event.data == b"run_now":
         asyncio.create_task(shared_outreach_logic(event, "Manual"))
-    elif event.data == b"add_users":
-        USER_STATE[event.sender_id] = "waiting_bulk_users"
-        await event.respond("📥 **Paste your list:**")
     elif event.data == b"stop":
         global IS_SENDING
         IS_SENDING = False
@@ -100,11 +96,12 @@ async def handle_login(event):
         data = TEMP_CLIENTS.get(event.sender_id)
         try:
             await data["client"].sign_in(data["phone"], otp, phone_code_hash=data["hash"])
-            await event.respond(f"✅ **Success!** Account {data['phone']} added to relay.")
+            await event.respond(f"✅ **Success!** Account {data['phone']} is active.")
             USER_STATE.pop(event.sender_id)
+            TEMP_CLIENTS.pop(event.sender_id)
         except errors.SessionPasswordNeededError:
             USER_STATE[event.sender_id] = "waiting_password"
-            await event.respond("🔐 **2FA Detected.** Enter your cloud password:")
+            await event.respond("🔐 **Two-Step Verification (2FA) Active.**\nPlease enter your **Cloud Password/PIN**:")
         except Exception as e:
             await event.respond(f"❌ Login failed: {str(e)}")
 
@@ -115,8 +112,9 @@ async def handle_login(event):
             await data["client"].sign_in(password=pwd)
             await event.respond(f"✅ **Success!** 2FA Account added.")
             USER_STATE.pop(event.sender_id)
+            TEMP_CLIENTS.pop(event.sender_id)
         except Exception as e:
             await event.respond(f"❌ Password error: {str(e)}")
 
-print(f"Account Manager v{VERSION} Ready...")
+print(f"v{VERSION} Ready...")
 bot.run_until_disconnected()
