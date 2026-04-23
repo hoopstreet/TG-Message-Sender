@@ -1,4 +1,4 @@
-import os, asyncio, random, glob, pytz
+import os, asyncio, random, glob, pytz, re
 from datetime import datetime, timedelta
 from telethon import TelegramClient, events, errors, Button
 from dotenv import load_dotenv
@@ -14,29 +14,40 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v1.6.1"
+VERSION = "v1.7.0"
 PHT = pytz.timezone('Asia/Manila')
 
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 IS_SENDING = False
 USER_STATE = {}
 
+def parse_usernames(text):
+    """
+    Captures:
+    1. @username
+    2. username (raw)
+    3. https://t.me/username
+    """
+    # Pattern looks for t.me links, @ symbols, or raw alphanumeric strings
+    raw_list = re.findall(r'(?:https?://t\.me/|@|^|[\n])([a-zA-Z0-9_]{5,32})', text)
+    # Clean and remove empty strings
+    return list(set([u.strip() for u in raw_list if u.strip()]))
+
 async def shared_outreach_logic(event, mode_name):
     global IS_SENDING
     IS_SENDING = True
-    
     msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
     message_text = msg_data.data['value'] if msg_data.data else "No message set."
     
-    await event.respond(f"⚡ **Daily Blast Initiated** ({mode_name})")
+    await event.respond(f"⚡ **Blast Active** ({mode_name})")
 
     while IS_SENDING:
         sessions = glob.glob("*.session")
         res = supabase.table("targets").select("*").eq("status", "pending").order("id").limit(1).execute()
         
         if not res.data:
-            await event.respond("✅ **All pending leads finished for today.**")
-            break # Exit loop to reschedule for tomorrow
+            await event.respond("✅ **Queue Empty.**")
+            break
         
         target = res.data[0]
         username = target['username']
@@ -57,42 +68,17 @@ async def shared_outreach_logic(event, mode_name):
             except Exception: continue
 
         if not success and IS_SENDING:
-            await event.respond("🕒 **All accounts limited.** Cooling down for 15 mins...")
             await asyncio.sleep(900)
-
-    # When loop breaks (Queue empty or Pause), if still in "Daily Mode", we stop the task here
     IS_SENDING = False
-
-async def daily_scheduler(event, target_time_str):
-    """Loop that triggers every day at the same time"""
-    await event.respond(f"📅 **Daily Schedule Set:** {target_time_str} PHT\nBot will trigger every 24h.")
-    
-    while True:
-        now_pht = datetime.now(PHT)
-        # Parse user input (HH:MM) and apply to today
-        target_h, target_m = map(int, target_time_str.split(':'))
-        target_today = now_pht.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
-        
-        # If time passed today, set for tomorrow
-        if now_pht > target_today:
-            target_trigger = target_today + timedelta(days=1)
-        else:
-            target_trigger = target_today
-
-        wait_seconds = (target_trigger - now_pht).total_seconds()
-        await asyncio.sleep(wait_seconds)
-        
-        # Wake up and send!
-        await shared_outreach_logic(event, "Daily Auto-Trigger")
-        await event.respond(f"😴 **Daily task done.** Sleeping until tomorrow {target_time_str} PHT.")
 
 @bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
 async def start(event):
     await event.respond(
-        f"👑 **Daily Auto-Relay v{VERSION}**",
+        f"👑 **Smart Lead Engine v{VERSION}**",
         buttons=[
-            [Button.inline("🚀 Send Now", data="run_now"), Button.inline("📅 Daily Sched", data="set_daily")],
-            [Button.inline("⏸️ Stop/Pause", data="stop"), Button.inline("📊 Stats", data="get_status")]
+            [Button.inline("🚀 Send Now", data="run_now"), Button.inline("📂 Add Users", data="add_users")],
+            [Button.inline("📅 Daily Sched", data="set_daily"), Button.inline("⏸️ Stop", data="stop")],
+            [Button.inline("📊 Stats", data="get_status")]
         ]
     )
 
@@ -100,25 +86,37 @@ async def start(event):
 async def callback(event):
     global IS_SENDING
     data = event.data.decode('utf-8')
-    if data == "run_now":
-        asyncio.create_task(shared_outreach_logic(event, "Manual Start"))
-    elif data == "set_daily":
-        USER_STATE[event.sender_id] = "waiting_daily_time"
-        await event.respond("⏰ **Enter Daily Time (PHT):**\nExample: `09:30` (24h format)")
+    if data == "add_users":
+        USER_STATE[event.sender_id] = "waiting_bulk_users"
+        await event.respond("📥 **Paste your list:**\nSupports `@user`, `t.me/user`, or raw names.")
+    elif data == "run_now":
+        asyncio.create_task(shared_outreach_logic(event, "Manual"))
     elif data == "stop":
         IS_SENDING = False
-        await event.edit("⏸️ **Paused.** Daily cycles suspended.")
+        await event.edit("⏸️ **Paused.**")
 
 @bot.on(events.NewMessage(from_users=ADMIN_ID))
 async def handle_input(event):
     if event.text.startswith('/'): return
-    if USER_STATE.get(event.sender_id) == "waiting_daily_time":
-        time_str = event.text.strip()
-        try:
-            asyncio.create_task(daily_scheduler(event, time_str))
-            USER_STATE.pop(event.sender_id)
-        except:
-            await event.respond("❌ Use `HH:MM` format (e.g. 14:00)")
+    
+    if USER_STATE.get(event.sender_id) == "waiting_bulk_users":
+        new_names = parse_usernames(event.text)
+        
+        # 1. Get existing usernames from DB to prevent duplicates
+        existing = supabase.table("targets").select("username").execute()
+        existing_list = [row['username'] for row in existing.data]
+        
+        # 2. Filter out duplicates
+        to_add = [name for name in new_names if name not in existing_list]
+        
+        if to_add:
+            payload = [{"username": name, "status": "pending"} for name in to_add]
+            supabase.table("targets").insert(payload).execute()
+            await event.respond(f"✅ **Success!**\nAdded: {len(to_add)}\nDuplicates Ignored: {len(new_names) - len(to_add)}")
+        else:
+            await event.respond("⚠️ All usernames provided already exist in the database.")
+        
+        USER_STATE.pop(event.sender_id)
 
-print("Daily Engine Online...")
+print("Smart Engine Online...")
 bot.run_until_disconnected()
