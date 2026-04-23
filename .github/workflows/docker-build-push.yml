@@ -1,4 +1,4 @@
-name: Docker Build and Versioning
+name: Docker Build and Northflank Sync
 
 on:
   push:
@@ -12,8 +12,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          ref: main         # Ensure we are on main to allow pushing
-          fetch-depth: 0     # Fetch all history
+          ref: main
+          fetch-depth: 0
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
@@ -34,11 +34,10 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:${{ steps.vars.outputs.tag }}
 
-      - name: Update hf.Dockerfile Version
+      # This triggers the Northflank "Redeploy" which pulls the new 'latest' image
+      - name: Redeploy Northflank Service
         run: |
-          sed -i "s|FROM .*|FROM ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:${{ steps.vars.outputs.tag }}|" hf.Dockerfile
-          git config user.name "Version Authority"
-          git config user.email "actions@github.com"
-          git add hf.Dockerfile
-          git commit -m "chore: sync hf.Dockerfile to ${{ steps.vars.outputs.tag }}"
-          git push origin main
+          curl -X POST https://api.northflank.com/v1/projects/tg-automation/services/tg-sender-service/redeploy \
+            -H "Authorization: Bearer ${{ secrets.NORTHFLANK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
