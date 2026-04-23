@@ -2,11 +2,12 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install necessary libraries
-RUN pip install --no-cache-dir telethon python-dotenv
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy your code and session files into the container
+# Copy everything (including your .session files)
 COPY . .
 
-# Start the bot
+# Run the manager bot
 CMD ["python", "send.py"]
