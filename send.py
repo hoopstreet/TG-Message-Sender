@@ -86,3 +86,56 @@ async def callback(event):
 
 print(f"Audit Engine v{VERSION} Online.")
 bot.run_until_disconnected()
+
+from guide_text import GUIDE
+
+@bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
+async def start(event):
+    await event.respond(
+        GUIDE,
+        buttons=[
+            [Button.inline("🚀 Start Blast", data="run_now"), 
+             Button.inline("📊 Full Audit", data="get_status")],
+            [Button.inline("📱 Add Account", data="add_acc"), 
+             Button.inline("📝 Edit Message", data="edit_msg")],
+            [Button.inline("📂 Add Leads", data="add_users"), 
+             Button.inline("⏸️ Stop Engine", data="stop")]
+        ]
+    )
+
+@bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
+async def start(event):
+    await event.respond(
+        GUIDE,
+        buttons=[
+            [Button.inline("🚀 Send Now", data="run_now"), 
+             Button.inline("📅 Schedule", data="set_sched")],
+            [Button.inline("⏸️ Pause Send", data="stop"), 
+             Button.inline("⏸️ Pause Sched", data="stop_sched")],
+            [Button.inline("📂 Add List", data="add_users"), 
+             Button.inline("📝 Edit Msg", data="edit_msg")],
+            [Button.inline("📱 Add Account", data="add_acc"), 
+             Button.inline("📊 Status", data="get_status")]
+        ]
+    )
+
+@bot.on(events.CallbackQuery)
+async def callback(event):
+    data = event.data
+    if data == b"get_status":
+        await event.respond(await get_stats_report())
+    elif data == b"run_now":
+        asyncio.create_task(shared_outreach_logic(event, "Manual Blast"))
+    elif data == b"set_sched":
+        USER_STATE[event.sender_id] = "waiting_sched_time"
+        await event.respond("📅 **Set Schedule:**\nFormat: `YYYY-MM-DD HH:MM`\nExample: `2026-04-25 09:00` (PHT)")
+    elif data == b"stop":
+        global IS_SENDING
+        IS_SENDING = False
+        await event.respond("🛑 **Manual Sending Paused.**")
+    elif data == b"stop_sched":
+        # Logic to cancel background scheduled tasks
+        await event.respond("⏸️ **Scheduled Task Stopped.**")
+    elif data == b"add_acc":
+        USER_STATE[event.sender_id] = "waiting_phone"
+        await event.respond("📱 Enter phone (+63...):")
