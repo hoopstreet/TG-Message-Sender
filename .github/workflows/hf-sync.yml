@@ -1,0 +1,39 @@
+name: Sync to Hugging Face
+
+on:
+  push:
+    paths:
+      - 'hf.Dockerfile'
+      - 'README.md'
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Sync to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # 1. Setup HF Remote
+          git remote add hf https://hoopstreet:$HF_TOKEN@huggingface.co/spaces/hoopstreet/TG-Message-Sender
+          
+          # 2. Create a temporary deployment branch
+          git checkout -b hf-deploy
+          
+          # 3. STRICT RULE: Delete everything except what is allowed
+          # Keep only Dockerfile and README
+          mv hf.Dockerfile Dockerfile
+          find . -maxdepth 1 ! -name 'Dockerfile' ! -name 'README.md' ! -name '.git' -exec rm -rf {} +
+          
+          # 4. Push to HF (Force push to overwrite the Space)
+          git add .
+          git config user.name "GitHub Action"
+          git config user.email "actions@github.com"
+          git commit -m "Deploy to HF Space: Clean Build"
+          git push -f hf hf-deploy:main
