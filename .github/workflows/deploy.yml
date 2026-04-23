@@ -1,9 +1,9 @@
-name: Version Sync (GitHub -> Docker -> Northflank)
+name: Version Sync (DockerHub & Northflank)
 
 on:
   push:
     tags:
-      - 'v*' # Triggers whenever you push a tag starting with 'v'
+      - 'v*'
 
 jobs:
   build-and-deploy:
@@ -22,17 +22,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Tagged Image
+      - name: Build and Push
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          # Tags both the specific version AND latest
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:${{ steps.vars.outputs.tag }}
             ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:latest
 
-      - name: Update Northflank to New Version
+      - name: Update Northflank
         run: |
           curl -X POST https://api.northflank.com/v1/projects/tg-automation/services/tg-message-sender/deployment \
             -H "Authorization: Bearer ${{ secrets.NORTHFLANK_TOKEN }}" \
