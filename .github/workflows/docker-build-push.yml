@@ -1,0 +1,42 @@
+name: Docker Build and Versioning
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Version
+        id: vars
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and Push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:${{ steps.vars.outputs.tag }}
+
+      # STEP 5: Version Sync Engine (Updates the hf.Dockerfile to the new tag)
+      - name: Update hf.Dockerfile Version
+        run: |
+          sed -i "s|FROM .*|FROM ${{ secrets.DOCKERHUB_USERNAME }}/tg-message-sender:${{ steps.vars.outputs.tag }}|" hf.Dockerfile
+          git config user.name "Version Authority"
+          git config user.email "actions@github.com"
+          git add hf.Dockerfile
+          git commit -m "chore: sync hf.Dockerfile to ${{ steps.vars.outputs.tag }}"
+          git push origin main
