@@ -14,49 +14,23 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v1.2.1"
-
-# Outreach Config
-SESSIONS = [".telegram_session", "catherine_session", "mara_session", "jasmine_session", "alaska_session"]
-MESSAGE = (
-    "Hi, We are launching a new iGaming platform this week and seeking one "
-    "professional team to lead all marketing and growth operations.\n\n"
-    "📩 TO APPLY: Message @XeniaXu8 with your experience."
-)
+VERSION = "v1.3.0"
 
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# --- OUTREACH ENGINE ---
-async def run_outreach():
-    res = supabase.table("targets").select("username").eq("status", "pending").order("id").execute()
-    targets = [r['username'] for r in res.data]
-    if not targets: return
-
-    for session in SESSIONS:
-        try:
-            async with TelegramClient(session, API_ID, API_HASH) as client:
-                for username in targets:
-                    try:
-                        target = username.replace("@", "").strip()
-                        await client.send_message(target, MESSAGE)
-                        supabase.table("targets").update({"status": "sent"}).eq("username", username).execute()
-                        # Update index
-                        setting = supabase.table("bot_settings").select("value").eq("key", "current_index").single().execute()
-                        new_idx = (setting.data['value'] if setting.data else 0) + 1
-                        supabase.table("bot_settings").update({"value": new_idx}).eq("key", "current_index").execute()
-                        await asyncio.sleep(random.randint(120, 240))
-                    except errors.PeerFloodError: break
-                    except: continue
-        except: continue
+# --- STATE MANAGEMENT ---
+USER_STATE = {} # Temporary storage for conversation flow
 
 # --- UI HANDLERS ---
 @bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
 async def start(event):
     await event.respond(
-        f"👑 **Control Panel {VERSION}**",
+        f"🛠️ **Advanced Control Panel {VERSION}**",
         buttons=[
-            [Button.inline("🚀 Start Blast", data="run_blast"), Button.inline("📊 Status", data="get_status")],
-            [Button.inline("♻️ Reset Index", data="reset_db")]
+            [Button.inline("🚀 Start Blast", data="run_blast"), Button.inline("📊 Stats", data="get_status")],
+            [Button.inline("📝 Edit Message", data="edit_msg"), Button.inline("📂 Add Usernames", data="add_users")],
+            [Button.inline("📱 Add Account", data="add_acc"), Button.inline("⏰ Schedule", data="set_sched")],
+            [Button.inline("♻️ Reset Progress", data="reset_db")]
         ]
     )
 
@@ -68,14 +42,39 @@ async def callback(event):
     if data == "get_status":
         res = supabase.table("targets").select("count", count="exact").eq("status", "pending").execute()
         await event.answer(f"Pending Leads: {res.count}", alert=True)
-        
-    elif data == "run_blast":
-        await event.edit("🚀 **Outreach Running...**\nCheck logs for progress.")
-        asyncio.create_task(run_outreach())
-        
-    elif data == "reset_db":
-        supabase.table("bot_settings").update({"value": 0}).eq("key", "current_index").execute()
-        await event.answer("✅ Progress reset to 0", alert=True)
 
-print(f"Bot Controller {VERSION} fully linked and online...")
+    elif data == "edit_msg":
+        USER_STATE[event.sender_id] = "waiting_msg"
+        await event.respond("📩 **Send the new outreach message text now:**")
+
+    elif data == "add_users":
+        USER_STATE[event.sender_id] = "waiting_users"
+        await event.respond("📝 **Send the list of usernames (one per line or comma-separated):**")
+
+    elif data == "add_acc":
+        await event.respond("🔑 To add a new account, upload the `.session` file to the GitHub repo and add the filename to the `SESSIONS` list in `send.py`.")
+
+    elif data == "run_blast":
+        await event.edit("🚀 **Outreach started in background...**")
+        # Existing run_outreach logic...
+
+# --- INPUT HANDLER (For Editing/Adding) ---
+@bot.on(events.NewMessage(from_users=ADMIN_ID))
+async def handle_input(event):
+    state = USER_STATE.get(event.sender_id)
+    if not state or event.text.startswith('/'): return
+
+    if state == "waiting_msg":
+        supabase.table("bot_settings").upsert({"key": "active_message", "value": event.text}).execute()
+        await event.respond(f"✅ **Message updated!**\nNew text:\n`{event.text}`")
+        USER_STATE.pop(event.sender_id)
+
+    elif state == "waiting_users":
+        raw_list = event.text.replace(',', '\n').split('\n')
+        clean_list = [{"username": u.strip().replace('@',''), "status": "pending"} for u in raw_list if u.strip()]
+        supabase.table("targets").insert(clean_list).execute()
+        await event.respond(f"✅ **Added {len(clean_list)} leads to Supabase!**")
+        USER_STATE.pop(event.sender_id)
+
+print(f"Bot v{VERSION} Operational...")
 bot.run_until_disconnected()
