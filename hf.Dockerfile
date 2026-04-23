@@ -1,2 +1,2 @@
-FROM hoopstreet/tg-message-sender:v1.1.3
+FROM hoopstreet/tg-message-sender:latest
 CMD ["python", "send.py"]
