@@ -1,6 +1,5 @@
-import os, asyncio, random, glob
-from datetime import datetime
-import pytz
+import os, asyncio, random, glob, pytz
+from datetime import datetime, timedelta
 from telethon import TelegramClient, events, errors, Button
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -15,12 +14,10 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v1.6.0"
+VERSION = "v1.6.1"
 PHT = pytz.timezone('Asia/Manila')
 
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-
-# Control Flags
 IS_SENDING = False
 USER_STATE = {}
 
@@ -31,16 +28,15 @@ async def shared_outreach_logic(event, mode_name):
     msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
     message_text = msg_data.data['value'] if msg_data.data else "No message set."
     
-    await event.respond(f"✨ **{mode_name} Triggered**\nScanning queue...")
+    await event.respond(f"⚡ **Daily Blast Initiated** ({mode_name})")
 
     while IS_SENDING:
         sessions = glob.glob("*.session")
         res = supabase.table("targets").select("*").eq("status", "pending").order("id").limit(1).execute()
         
         if not res.data:
-            await event.respond("✅ **Queue Finished.**")
-            IS_SENDING = False
-            break
+            await event.respond("✅ **All pending leads finished for today.**")
+            break # Exit loop to reschedule for tomorrow
         
         target = res.data[0]
         username = target['username']
@@ -61,25 +57,42 @@ async def shared_outreach_logic(event, mode_name):
             except Exception: continue
 
         if not success and IS_SENDING:
-            await asyncio.sleep(600)
+            await event.respond("🕒 **All accounts limited.** Cooling down for 15 mins...")
+            await asyncio.sleep(900)
 
-async def schedule_watcher(event, target_dt):
-    await event.respond(f"📅 **Scheduled for:** {target_dt.strftime('%Y-%m-%d %H:%M')} PHT\nStanding by...")
+    # When loop breaks (Queue empty or Pause), if still in "Daily Mode", we stop the task here
+    IS_SENDING = False
+
+async def daily_scheduler(event, target_time_str):
+    """Loop that triggers every day at the same time"""
+    await event.respond(f"📅 **Daily Schedule Set:** {target_time_str} PHT\nBot will trigger every 24h.")
+    
     while True:
         now_pht = datetime.now(PHT)
-        if now_pht >= target_dt:
-            await shared_outreach_logic(event, "Scheduled Blast")
-            break
-        await asyncio.sleep(30)
+        # Parse user input (HH:MM) and apply to today
+        target_h, target_m = map(int, target_time_str.split(':'))
+        target_today = now_pht.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
+        
+        # If time passed today, set for tomorrow
+        if now_pht > target_today:
+            target_trigger = target_today + timedelta(days=1)
+        else:
+            target_trigger = target_today
+
+        wait_seconds = (target_trigger - now_pht).total_seconds()
+        await asyncio.sleep(wait_seconds)
+        
+        # Wake up and send!
+        await shared_outreach_logic(event, "Daily Auto-Trigger")
+        await event.respond(f"😴 **Daily task done.** Sleeping until tomorrow {target_time_str} PHT.")
 
 @bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
 async def start(event):
     await event.respond(
-        f"👑 **Dual-Trigger Control v{VERSION}**",
+        f"👑 **Daily Auto-Relay v{VERSION}**",
         buttons=[
-            [Button.inline("🚀 Send Now", data="run_now"), Button.inline("⏸️ Pause Now", data="stop")],
-            [Button.inline("📅 Schedule", data="set_sched"), Button.inline("⏸️ Pause Sched", data="stop")],
-            [Button.inline("📊 Stats", data="get_status"), Button.inline("♻️ Reset", data="reset_db")]
+            [Button.inline("🚀 Send Now", data="run_now"), Button.inline("📅 Daily Sched", data="set_daily")],
+            [Button.inline("⏸️ Stop/Pause", data="stop"), Button.inline("📊 Stats", data="get_status")]
         ]
     )
 
@@ -88,25 +101,24 @@ async def callback(event):
     global IS_SENDING
     data = event.data.decode('utf-8')
     if data == "run_now":
-        asyncio.create_task(shared_outreach_logic(event, "Send Now"))
-    elif data == "set_sched":
-        USER_STATE[event.sender_id] = "waiting_full_time"
-        await event.respond("🗓️ **Enter Date & Time (PHT):**\nFormat: `YYYY-MM-DD HH:MM`\nExample: `2026-04-25 10:30`")
+        asyncio.create_task(shared_outreach_logic(event, "Manual Start"))
+    elif data == "set_daily":
+        USER_STATE[event.sender_id] = "waiting_daily_time"
+        await event.respond("⏰ **Enter Daily Time (PHT):**\nExample: `09:30` (24h format)")
     elif data == "stop":
         IS_SENDING = False
-        await event.edit("⏸️ **All Operations Paused.**")
+        await event.edit("⏸️ **Paused.** Daily cycles suspended.")
 
 @bot.on(events.NewMessage(from_users=ADMIN_ID))
 async def handle_input(event):
     if event.text.startswith('/'): return
-    if USER_STATE.get(event.sender_id) == "waiting_full_time":
+    if USER_STATE.get(event.sender_id) == "waiting_daily_time":
+        time_str = event.text.strip()
         try:
-            dt = datetime.strptime(event.text.strip(), '%Y-%m-%d %H:%M')
-            dt_pht = PHT.localize(dt)
-            asyncio.create_task(schedule_watcher(event, dt_pht))
+            asyncio.create_task(daily_scheduler(event, time_str))
             USER_STATE.pop(event.sender_id)
         except:
-            await event.respond("❌ **Invalid format.** Use: `YYYY-MM-DD HH:MM`")
+            await event.respond("❌ Use `HH:MM` format (e.g. 14:00)")
 
-print(f"Dual-Mode Engine v{VERSION} Online...")
+print("Daily Engine Online...")
 bot.run_until_disconnected()
