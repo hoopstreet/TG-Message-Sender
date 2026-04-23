@@ -13,11 +13,9 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v1.5.0"
+VERSION = "v1.5.1"
 
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-
-# Global control flags
 IS_PAUSED = True
 
 async def run_relay_outreach(event):
@@ -27,23 +25,19 @@ async def run_relay_outreach(event):
     msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
     message_text = msg_data.data['value'] if msg_data.data else "No message set."
     
-    sessions = glob.glob("*.session")
-    if not sessions:
-        await event.respond("❌ No accounts found.")
-        return
-
-    await event.respond("🚀 **Relay Blast Active.** Accounts will cycle on limits.")
+    await event.respond("🚀 **Smart Relay Started.**\nSafety delays and auto-switching enabled.")
 
     while not IS_PAUSED:
-        # Get next pending lead
+        sessions = glob.glob("*.session")
         res = supabase.table("targets").select("*").eq("status", "pending").order("id").limit(1).execute()
+        
         if not res.data:
-            await event.respond("✅ **Queue Empty.**")
+            await event.respond("✅ **Queue Finished.**")
             break
         
         target = res.data[0]
         username = target['username']
-        lead_sent = False
+        success = False
 
         for sess_file in sessions:
             if IS_PAUSED: break
@@ -52,24 +46,29 @@ async def run_relay_outreach(event):
             try:
                 async with TelegramClient(client_name, API_ID, API_HASH) as client:
                     await client.send_message(username, message_text)
-                    supabase.table("targets").update({"status": "success", "sent_by": client_name}).eq("id", target['id']).execute()
-                    await event.respond(f"✅ @{username} sent by {client_name}")
-                    lead_sent = True
-                    break # Success! Move to next lead
-            
+                    supabase.table("targets").update({
+                        "status": "success", 
+                        "sent_by": client_name
+                    }).eq("id", target['id']).execute()
+                    
+                    await event.respond(f"✅ @{username} | via {client_name}")
+                    success = True
+                    # Safety Wait after successful send
+                    wait_time = random.randint(150, 300) 
+                    await asyncio.sleep(wait_time)
+                    break 
+
             except errors.FloodWaitError as e:
-                await event.respond(f"⚠️ {client_name} hit limit. Switching to next account...")
-                continue # Try next account for this same lead
+                await event.respond(f"⏳ {client_name} limited for {e.seconds}s. Trying next account...")
+                continue # Move to next account in the list
             
             except Exception as e:
-                await event.respond(f"❌ {client_name} error: {str(e)[:20]}")
+                print(f"Error on {client_name}: {e}")
                 continue
 
-        if not lead_sent and not IS_PAUSED:
-            await event.respond("🕒 **All accounts limited.** Cooling down for 15 mins...")
-            await asyncio.sleep(900) # Wait 15 mins before retrying the cycle
-        
-        await asyncio.sleep(random.randint(120, 300))
+        if not success and not IS_PAUSED:
+            await event.respond("😴 **All accounts limited.** Global sleep for 10 mins...")
+            await asyncio.sleep(600)
 
 @bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
 async def start(event):
@@ -92,14 +91,12 @@ async def callback(event):
             await event.answer("⚠️ Already running!", alert=True)
         else:
             asyncio.create_task(run_relay_outreach(event))
-            
     elif data == "pause_bot":
         IS_PAUSED = True
-        await event.edit("⏸️ **System Paused.** Standing by...")
-        
+        await event.edit("⏸️ **Paused.** Bot will stop after current attempt.")
     elif data == "get_status":
-        s = supabase.table("targets").select("status", count="exact").execute()
-        await event.answer(f"Leads: {s.count}", alert=True)
+        s = supabase.table("targets").select("status", count="exact").eq("status", "pending").execute()
+        await event.answer(f"Pending: {s.count}", alert=True)
 
-print(f"Bot v{VERSION} Relay Engine Online...")
+print(f"Relay Engine v{VERSION} Online...")
 bot.run_until_disconnected()
