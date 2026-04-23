@@ -1,4 +1,6 @@
 import os, asyncio, random, glob
+from datetime import datetime
+import pytz
 from telethon import TelegramClient, events, errors, Button
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -13,37 +15,40 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v1.4.0"
+VERSION = "v1.4.1"
+PHT = pytz.timezone('Asia/Manila')
 
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-
-USER_STATE = {} 
-NEW_ACC_CLIENTS = {}
+USER_STATE = {}
 
 async def run_continuous_outreach(event):
-    # Fetch Message
-    msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
-    message_text = msg_data.data['value'] if msg_data.data else "No message set."
+    # Fetch Message & Schedule
+    settings = supabase.table("bot_settings").select("*").execute()
+    config = {item['key']: item['value'] for item in settings.data}
     
-    # Auto-detect all .session files
-    sessions = glob.glob("*.session")
-    if not sessions:
-        await event.respond("❌ No accounts found. Add one first.")
-        return
+    message_text = config.get("active_message", "No message set.")
+    sched_time = config.get("schedule_time") # Format: "HH:MM"
 
-    await event.respond(f"🚀 **Continuous Blast Started**\nUsing {len(sessions)} accounts.")
+    if sched_time:
+        await event.respond(f"⏳ **Schedule Active:** Waiting for {sched_time} PHT...")
+        while True:
+            now_pht = datetime.now(PHT).strftime("%H:%M")
+            if now_pht == sched_time:
+                break
+            await asyncio.sleep(30) # Check every 30 seconds
+
+    sessions = glob.glob("*.session")
+    await event.respond(f"🚀 **Continuous Blast Started (PHT)**")
 
     while True:
-        # Get the next 'pending' lead
         res = supabase.table("targets").select("*").eq("status", "pending").order("id").limit(1).execute()
         if not res.data:
-            await event.respond("✅ **Queue Empty.** All messages sent.")
+            await event.respond("✅ **Queue Empty.**")
             break
         
         target = res.data[0]
         username = target['username']
         
-        # Cycle through sessions
         for sess_file in sessions:
             client_name = sess_file.replace('.session', '')
             try:
@@ -51,12 +56,11 @@ async def run_continuous_outreach(event):
                     await client.send_message(username, message_text)
                     supabase.table("targets").update({"status": "success", "sent_by": client_name}).eq("id", target['id']).execute()
                     await event.respond(f"✅ Success: @{username} via {client_name}")
-                    break # Move to next lead
+                    break
             except errors.PeerFloodError:
-                continue # Try next account for same lead
+                continue
             except Exception as e:
-                supabase.table("targets").update({"status": f"error: {str(e)[:20]}"}).eq("id", target['id']).execute()
-                await event.respond(f"❌ Error: @{username} | {str(e)[:30]}")
+                supabase.table("targets").update({"status": f"err: {str(e)[:15]}"}).eq("id", target['id']).execute()
                 break 
 
         await asyncio.sleep(random.randint(120, 300))
@@ -64,11 +68,11 @@ async def run_continuous_outreach(event):
 @bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
 async def start(event):
     await event.respond(
-        f"👑 **Continuous Control v{VERSION}**",
+        f"👑 **PHT Scheduled Control v{VERSION}**",
         buttons=[
-            [Button.inline("🚀 Start Continuous", data="run_blast"), Button.inline("📊 Stats", data="get_status")],
+            [Button.inline("🚀 Start Blast", data="run_blast"), Button.inline("⏰ Set Schedule", data="set_sched")],
             [Button.inline("📝 Msg", data="edit_msg"), Button.inline("📂 Add Users", data="add_users")],
-            [Button.inline("📱 Add Acc", data="add_acc"), Button.inline("♻️ Reset", data="reset_db")]
+            [Button.inline("📊 Stats", data="get_status"), Button.inline("♻️ Reset", data="reset_db")]
         ]
     )
 
@@ -76,28 +80,30 @@ async def start(event):
 async def callback(event):
     if event.sender_id != ADMIN_ID: return
     data = event.data.decode('utf-8')
-    if data == "run_blast":
+    if data == "set_sched":
+        USER_STATE[event.sender_id] = "waiting_time"
+        await event.respond("⏰ **Enter PHT Time to start (24h format):**\ne.g., `14:30` for 2:30 PM")
+    elif data == "run_blast":
         asyncio.create_task(run_continuous_outreach(event))
     elif data == "add_users":
         USER_STATE[event.sender_id] = "waiting_users"
-        await event.respond("📂 **Send list (one per line):**")
-    elif data == "get_status":
-        s = supabase.table("targets").select("status", count="exact").execute()
-        await event.respond(f"📊 **Stats:** {s.count} total leads.")
+        await event.respond("📂 **Send list:**")
 
 @bot.on(events.NewMessage(from_users=ADMIN_ID))
 async def handle_input(event):
     state = USER_STATE.get(event.sender_id)
     if not state or event.text.startswith('/'): return
 
-    if state == "waiting_users":
+    if state == "waiting_time":
+        supabase.table("bot_settings").upsert({"key": "schedule_time", "value": event.text.strip()}).execute()
+        await event.respond(f"✅ **Schedule Set!** Bot will wait for {event.text} PHT.")
+        USER_STATE.pop(event.sender_id)
+    elif state == "waiting_users":
         users = [u.strip().replace('@','') for u in event.text.split('\n') if u.strip()]
         data = [{"username": u, "status": "pending"} for u in users]
         supabase.table("targets").insert(data).execute()
-        await event.respond(f"✅ Added {len(data)} users to the end of the queue.")
+        await event.respond(f"✅ Added {len(data)} users.")
         USER_STATE.pop(event.sender_id)
-    
-    # (Rest of Login Logic for Phase 2 from v1.3.1 remains the same...)
 
-print(f"Bot v{VERSION} Operational...")
+print(f"Bot v{VERSION} PHT Ready...")
 bot.run_until_disconnected()
