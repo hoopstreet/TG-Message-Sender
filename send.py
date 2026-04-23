@@ -1,10 +1,10 @@
 import os, asyncio, random, glob, pytz, re
+from datetime import datetime, date
 from telethon import TelegramClient, events, errors, Button
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
 load_dotenv()
-
 API_ID = int(os.getenv("TELEGRAM_API_ID", 0))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 BOT_TOKEN = os.getenv("CONTROL_BOT_TOKEN", "")
@@ -13,136 +13,76 @@ SB_URL = os.getenv("SUPABASE_URL")
 SB_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SB_URL, SB_KEY)
-VERSION = "v2.0.0"
+VERSION = "v2.1.0"
 PHT = pytz.timezone('Asia/Manila')
-
 bot = TelegramClient('bot_control', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-IS_SENDING = False
-USER_STATE = {}
-TEMP_CLIENTS = {}
+IS_SENDING, USER_STATE, TEMP_CLIENTS = False, {}, {}
 
-async def get_stats_report():
-    # Fetch lead counts
-    leads = supabase.table("targets").select("status", count="exact").execute()
-    total = leads.count if leads.count else 0
-    
-    pending = supabase.table("targets").select("id", count="exact").eq("status", "pending").execute().count or 0
-    success = supabase.table("targets").select("id", count="exact").eq("status", "success").execute().count or 0
-    
-    # Count sessions (excluding the bot itself)
-    sessions = [f for f in glob.glob("*.session") if "bot_control" not in f]
-    active_accs = len(sessions)
-    
-    # Check for active message
-    msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
-    msg_preview = (msg_data.data['value'][:30] + "...") if msg_data.data else "None Set"
-
-    status_text = (
-        f"📊 **System Status {VERSION}**\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📱 **Accounts:** {active_accs} Active\n"
-        f"📝 **Message:** `{msg_preview}`\n\n"
-        f"📈 **Lead Progress:**\n"
-        f"┣ Total: {total}\n"
-        f"┣ Pending: {pending} ⏳\n"
-        f"┗ Sent: {success} ✅\n\n"
-        f"⚙️ **Engine:** {'🟢 Running' if IS_SENDING else '🔴 Idle'}"
-    )
-    return status_text
+async def compact_queue():
+    res = supabase.table("targets").select("id, username").eq("status", "pending").execute()
+    to_delete = [row['id'] for row in res.data if not row['username'] or row['username'].strip() == ""]
+    if to_delete:
+        for i in to_delete: supabase.table("targets").delete().eq("id", i).execute()
+    return len(to_delete)
 
 async def shared_outreach_logic(event, mode_name):
     global IS_SENDING
     IS_SENDING = True
-    await event.respond(f"⚡ **Blast Engine Active** ({mode_name})")
+    removed = await compact_queue()
+    if removed > 0: await event.respond(f"🧹 Purged {removed} empty leads.")
+    await event.respond(f"⚡ **Outreach Started** ({mode_name})")
     while IS_SENDING:
         msg_data = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
         message_text = msg_data.data['value'] if msg_data.data else "Hello!"
         res = supabase.table("targets").select("*").eq("status", "pending").order("id").limit(1).execute()
         if not res.data:
-            await event.respond("✅ **Queue Finished.**")
-            break
+            await event.respond("✅ **Queue Finished.**"); break
         target = res.data[0]
-        username = target['username']
-        success = False
+        username, success = target['username'], False
         for sess_file in glob.glob("*.session"):
             if not IS_SENDING or "bot_control" in sess_file: continue
             client_name = sess_file.replace('.session', '')
             try:
                 async with TelegramClient(client_name, API_ID, API_HASH) as client:
                     await client.send_message(username, message_text)
-                    supabase.table("targets").update({"status": "success", "sent_by": client_name}).eq("id", target['id']).execute()
-                    await event.respond(f"✅ @{username} | via {client_name}")
+                    supabase.table("targets").update({
+                        "status": "success", "sent_by": client_name,
+                        "updated_at": datetime.now(PHT).isoformat()
+                    }).eq("id", target['id']).execute()
+                    await event.respond(f"✅ `[OK]` @{username} via {client_name}")
                     success = True
-                    await asyncio.sleep(random.randint(150, 300))
-                    break 
-            except errors.FloodWaitError: continue
-            except Exception: continue
+                    await asyncio.sleep(random.randint(150, 300)); break 
+            except errors.FloodWaitError as e: await event.respond(f"🕒 `{client_name}` limited: {e.seconds}s")
+            except Exception as e: await event.respond(f"❌ `{client_name}`: {str(e)[:40]}")
         if not success and IS_SENDING: await asyncio.sleep(900)
     IS_SENDING = False
 
+async def get_stats_report():
+    today_str = datetime.now(PHT).strftime('%Y-%m-%d')
+    all_data = supabase.table("targets").select("status, sent_by, updated_at").execute()
+    total_leads, total_sent = len(all_data.data), len([x for x in all_data.data if x['status'] == 'success'])
+    daily_sent = len([x for x in all_data.data if x['status'] == 'success' and x.get('updated_at', '').startswith(today_str)])
+    sessions = [f.replace('.session', '') for f in glob.glob("*.session") if "bot_control" not in f]
+    acc_report = ""
+    for acc in sessions:
+        lifetime = len([x for x in all_data.data if x['sent_by'] == acc])
+        today = len([x for x in all_data.data if x['sent_by'] == acc and x.get('updated_at', '').startswith(today_str)])
+        acc_report += f"👤 `{acc}`: {today} today | {lifetime} total\n"
+    return (f"📊 **Global Audit v{VERSION}**\n━━━━━━━━━━━━━━━━━━\n📈 **Performance**\n┣ Total: {total_leads} | Sent: {total_sent}\n┗ Today: {daily_sent} 🚀\n\n📱 **Accounts**\n{acc_report if acc_report else 'None'}\n⚙️ **Engine:** {'🟢 Running' if IS_SENDING else '🔴 Idle'}")
+
 @bot.on(events.NewMessage(pattern='/start', from_users=ADMIN_ID))
 async def start(event):
-    await event.respond(
-        f"👑 **Command Center v{VERSION}**",
-        buttons=[
-            [Button.inline("🚀 Send Now", data="run_now"), Button.inline("📊 Stats", data="get_status")],
-            [Button.inline("📱 Add Acc", data="add_acc"), Button.inline("📝 Edit Msg", data="edit_msg")],
-            [Button.inline("📂 Add Users", data="add_users"), Button.inline("⏸️ Stop", data="stop")]
-        ]
-    )
+    await event.respond(f"👑 **Tacloban HQ v{VERSION}**", buttons=[
+        [Button.inline("🚀 Start Blast", data="run_now"), Button.inline("📊 Full Audit", data="get_status")],
+        [Button.inline("📱 Add Acc", data="add_acc"), Button.inline("📝 Edit Msg", data="edit_msg")],
+        [Button.inline("📂 Add Users", data="add_users"), Button.inline("⏸️ Stop", data="stop")]
+    ])
 
 @bot.on(events.CallbackQuery)
 async def callback(event):
-    if event.data == b"get_status":
-        report = await get_stats_report()
-        await event.respond(report)
-    elif event.data == b"add_acc":
-        USER_STATE[event.sender_id] = "waiting_phone"
-        await event.respond("📱 **Enter Phone Number:**\n(+63...)")
-    elif event.data == b"run_now":
-        asyncio.create_task(shared_outreach_logic(event, "Manual"))
-    elif event.data == b"stop":
-        global IS_SENDING
-        IS_SENDING = False
-        await event.edit("⏸️ **Engine Stopped.**")
+    if event.data == b"get_status": await event.respond(await get_stats_report())
+    elif event.data == b"run_now": asyncio.create_task(shared_outreach_logic(event, "Manual"))
+    elif event.data == b"stop": global IS_SENDING; IS_SENDING = False; await event.edit("⏸️ **Engine Paused.**")
 
-@bot.on(events.NewMessage(from_users=ADMIN_ID))
-async def handle_inputs(event):
-    state = USER_STATE.get(event.sender_id)
-    if not state or event.text.startswith('/'): return
-
-    # Login Logic (Re-pasting for v2.0 consistency)
-    if state == "waiting_phone":
-        phone = event.text.strip()
-        client = TelegramClient(f"sess_{phone.replace('+', '')}", API_ID, API_HASH)
-        await client.connect()
-        try:
-            hash = await client.send_code_request(phone)
-            TEMP_CLIENTS[event.sender_id] = {"client": client, "phone": phone, "hash": hash.phone_code_hash}
-            USER_STATE[event.sender_id] = "waiting_otp"
-            await event.respond(f"📩 **OTP Sent to {phone}.**")
-        except Exception as e: await event.respond(f"❌ Error: {str(e)}")
-
-    elif state == "waiting_otp":
-        otp = event.text.strip()
-        data = TEMP_CLIENTS.get(event.sender_id)
-        try:
-            await data["client"].sign_in(data["phone"], otp, phone_code_hash=data["hash"])
-            await event.respond(f"✅ **Account Added.**")
-            USER_STATE.pop(event.sender_id)
-        except errors.SessionPasswordNeededError:
-            USER_STATE[event.sender_id] = "waiting_password"
-            await event.respond("🔐 **2FA PIN Required:**")
-        except Exception as e: await event.respond(f"❌ Failed: {str(e)}")
-
-    elif state == "waiting_password":
-        pwd = event.text.strip()
-        data = TEMP_CLIENTS.get(event.sender_id)
-        try:
-            await data["client"].sign_in(password=pwd)
-            await event.respond(f"✅ **2FA Success.**")
-            USER_STATE.pop(event.sender_id)
-        except Exception as e: await event.respond(f"❌ PIN Error: {str(e)}")
-
-print(f"Command Center v{VERSION} Online.")
+print(f"Audit Engine v{VERSION} Online.")
 bot.run_until_disconnected()
