@@ -1,3 +1,5 @@
 telethon
-python-dotenv
 supabase
+python-dotenv
+pytz
+httpx
