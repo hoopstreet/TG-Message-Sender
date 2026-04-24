@@ -19,32 +19,34 @@ except Exception as e:
 async def start(event):
     guide = (
         "👑 **Tacloban HQ: Weightless Commander**\n"
-        "Welcome to your official Outreach Control Center.\n\n"
-        "/start - 👑 **Open Command Center Guide**\n"
-        "/send_now - 🚀 **Trigger Immediate Manual Blast**\n"
-        "/schedule - 📅 **Set Date/Time for Auto-Send**\n"
-        "/pause_send - ⏸️ **Stop Active Manual Sending**\n"
-        "/pause_sched - ⏸️ **Stop Active Scheduled Tasks**\n"
-        "/add_list - 📂 **Import New @Username List**\n"
-        "/edit_msg - 📝 **Update Promotional Text**\n"
-        "/add_account - 📱 **Link New Sender Session**\n"
-        "/status - 📊 **View Global Audit & Stats**"
+        "Outreach Engine Guide:\n\n"
+        "/start - 👑 Guide\n"
+        "/send_now - 🚀 Trigger Blast\n"
+        "/schedule - 📅 Set PHT Time\n"
+        "/pause_send - ⏸️ Stop Sending\n"
+        "/add_list - 📂 Import Leads\n"
+        "/edit_msg - 📝 Update Script\n"
+        "/add_account - 📱 View Sessions\n"
+        "/status - 📊 View Audit"
     )
     await event.respond(guide)
 
-@bot.on(events.CallbackQuery)
-async def master_router(event):
-    data = event.data.decode('utf-8')
-    if data == "status":
-        res = supabase.table("message_campaign").select("status").execute()
-        s = sum(1 for r in res.data if r['status'] == 'success')
-        await event.respond(f"📊 **Audit:** {s} successful sends recorded.")
+@bot.on(events.NewMessage(pattern='/status'))
+async def status_report(event):
+    res = supabase.table("message_campaign").select("status").execute()
+    s = sum(1 for r in res.data if r['status'] == 'success')
+    f = sum(1 for r in res.data if r['status'] == 'failed')
+    p = sum(1 for r in res.data if r['status'] == 'pending')
+    await event.respond(f"📊 **Audit:**\n✅ Success: {s}\n❌ Failed: {f}\n⏳ Pending: {p}")
 
 @bot.on(events.NewMessage(pattern='/send_now'))
 async def manual_blast(event):
-    await event.respond("🚀 **Initializing Manual Blast...**")
+    await event.respond("🚀 **Blast Started!** Monitoring sessions...")
     sessions = glob.glob("*.session")
     leads = supabase.table("message_campaign").select("*").eq("status", "pending").limit(20).execute()
+    if not leads.data:
+        await event.respond("⏳ No pending leads found in Supabase.")
+        return
     for lead in leads.data:
         sess = random.choice(sessions).replace(".session", "")
         try:
@@ -55,8 +57,19 @@ async def manual_blast(event):
         except Exception as e:
             supabase.table("message_campaign").update({"status": "failed"}).eq("id", lead['id']).execute()
 
+@bot.on(events.NewMessage(pattern='/pause_send'))
+async def pause_engine(event):
+    supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
+    await event.respond("⏸️ **Engine Halted.**")
+
+@bot.on(events.NewMessage(pattern='/add_account'))
+async def account_manager(event):
+    sessions = glob.glob("*.session")
+    s_list = "\n".join([f"📱 {s}" for s in sessions]) if sessions else "No sessions."
+    await event.respond(f"📱 **Sessions:**\n{s_list}")
+
 @bot.on(events.NewMessage(pattern='/add_list|/edit_msg'))
-async def input_handlers(event):
+async def inputs(event):
     if '/add_list' in event.text:
         async with bot.conversation(event.sender_id) as conv:
             await conv.send_message("📂 **Send @usernames (one per line):**")
@@ -64,56 +77,17 @@ async def input_handlers(event):
             leads = [u.strip() for u in msg.text.split('\n') if u.strip()]
             for u in leads:
                 supabase.table("message_campaign").upsert({"username": u, "status": "pending"}).execute()
-            await conv.send_message(f"✅ {len(leads)} leads added to Supabase.")
+            await conv.send_message(f"✅ {len(leads)} leads added.")
     elif '/edit_msg' in event.text:
         async with bot.conversation(event.sender_id) as conv:
-            await conv.send_message("📝 **Send your new Promo Script:**")
+            await conv.send_message("📝 **Send Script:**")
             msg = await conv.get_response()
             supabase.table("message_campaign").update({"edit_msg": msg.text}).eq("status", "pending").execute()
-            await conv.send_message("✅ Promo script updated.")
+            await conv.send_message("✅ Script updated.")
 
 async def main():
-    print("🚀 Tacloban HQ v3.4.2 Active (Menu Hidden)")
+    print("🚀 Tacloban HQ v3.4.6 Active (Full Loop Fixed)")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(main())
-
-@bot.on(events.NewMessage(pattern='/status'))
-async def status_report(event):
-    res = supabase.table("message_campaign").select("status").execute()
-    s = sum(1 for r in res.data if r['status'] == 'success')
-    f = sum(1 for r in res.data if r['status'] == 'failed')
-    p = sum(1 for r in res.data if r['status'] == 'pending')
-    report = (
-        "📊 **Tacloban HQ Global Audit**\n\n"
-        f"✅ **Success:** {s}\n"
-        f"❌ **Failed:** {f}\n"
-        f"⏳ **Pending:** {p}\n\n"
-        "Engine Status: **Operational**"
-    )
-    await event.respond(report)
-
-@bot.on(events.NewMessage(pattern='/pause_send'))
-async def pause_engine(event):
-    supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
-    await event.respond("⏸️ **Manual Outreach Halted.** All pending leads moved to 'paused' state.")
-
-@bot.on(events.NewMessage(pattern='/add_account'))
-async def account_manager(event):
-    sessions = glob.glob("*.session")
-    session_list = "\n".join([f"📱 {s}" for s in sessions]) if sessions else "No sessions found."
-    msg = (
-        "📱 **Linked Sender Sessions:**\n\n"
-        f"{session_list}\n\n"
-        "To add a new account, upload the `.session` file directly to the root folder via GitHub/iSH."
-    )
-    await event.respond(msg)
-
-@bot.on(events.NewMessage(pattern='/schedule'))
-async def schedule_manager(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📅 **Enter Target PHT Time:**\nFormat: `YYYY-MM-DD HH:MM`")
-        response = await conv.get_response()
-        # In a weightless setup, we'd save this to a 'schedules' table in Supabase
-        await conv.send_message(f"✅ **Scheduled!** Engine will trigger blast at `{response.text}` PHT.")
