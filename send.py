@@ -1,6 +1,6 @@
 import os, asyncio, random, glob, pytz, logging, re, base64
 from datetime import datetime
-from telethon import TelegramClient, events, errors
+from telethon import TelegramClient, events, errors, functions, types
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -30,8 +30,7 @@ def restore_sessions():
 async def global_worker():
     while True:
         try:
-            res = supabase.table("bot_settings").select("*").eq("id", "production").single().execute()
-            sets = res.data
+            sets = supabase.table("bot_settings").select("*").eq("id", "production").single().execute().data
             if not sets['is_sched_active'] and not sets['is_sending_active']:
                 await asyncio.sleep(60); continue
             
@@ -69,16 +68,6 @@ async def status(event):
         await event.respond(f"📊 **Audit**\nPending: {pending}\nAccounts: {accs}\nSched: {'ON' if sets['is_sched_active'] else 'OFF'}")
     except Exception as e: await event.respond(f"❌ Status Error: {e}")
 
-@bot.on(events.NewMessage(pattern='/add_list'))
-async def add_list(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Paste Leads:**")
-        r = await conv.get_response()
-        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', r.text)))
-        new_leads = [{"add_list": u, "status": "pending"} for u in found if len(u) > 4]
-        if new_leads: supabase.table("message_campaign").upsert(new_leads).execute()
-        await event.respond(f"✅ Processed {len(found)} leads.")
-
 @bot.on(events.NewMessage(pattern='/add_account'))
 async def add_account(event):
     async with bot.conversation(event.sender_id) as conv:
@@ -91,12 +80,7 @@ async def add_account(event):
             await client.send_code_request(phone)
             await conv.send_message("📩 **OTP:**")
             code = (await conv.get_response()).text
-            try:
-                await client.sign_in(phone, code)
-            except errors.SessionPasswordNeededError:
-                await conv.send_message("🔐 **2FA:**")
-                pw = (await conv.get_response()).text
-                await client.sign_in(password=pw)
+            await client.sign_in(phone, code)
             with open(f"{s_name}.session", "rb") as f:
                 encoded = base64.b64encode(f.read()).decode('utf-8')
                 supabase.table("saved_sessions").upsert({"phone_number": s_name, "session_data": encoded}).execute()
