@@ -43,3 +43,15 @@ async def add_list(event):
         for n in msg.text.split('\n'):
             if n.strip(): supabase.table("message_campaign").upsert({"username": n.strip(), "status": "pending"}).execute()
         await conv.send_message("✅ Leads Added.")
+
+# --- v3.0.0 Background Service Bridge ---
+async def main():
+    print("🚀 Tacloban HQ Engine Starting...")
+    # Start the scheduler loop in the background
+    asyncio.create_task(scheduler_loop())
+    # Keep the bot running
+    await bot.run_until_disconnected()
+
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
