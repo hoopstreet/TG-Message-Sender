@@ -27,9 +27,37 @@ def restore_sessions():
                 with open(f_path, "wb") as f: f.write(base64.b64decode(row['session_data']))
     except: pass
 
+async def global_worker():
+    while True:
+        try:
+            res = supabase.table("bot_settings").select("*").eq("id", "production").single().execute()
+            sets = res.data
+            if not sets['is_sched_active'] and not sets['is_sending_active']:
+                await asyncio.sleep(60); continue
+            
+            sessions = sorted([f for f in glob.glob("*.session") if "bot.session" not in f])
+            for s_file in sessions:
+                s_name = s_file.replace(".session", "")
+                today = datetime.now(PHT).strftime('%Y-%m-%d')
+                sent_today = supabase.table("message_campaign").select("id", count="exact").eq("sent_by", s_name).gte("updated_at", today).execute().count
+                if sent_today >= 5: continue 
+
+                lead_req = supabase.table("message_campaign").select("*").eq("status", "pending").limit(1).execute()
+                if not lead_req.data: break
+                lead = lead_req.data[0]
+                
+                async with TelegramClient(s_name, API_ID, API_HASH) as client:
+                    greet = random.choice(["Hi", "Hello", "Hey", "Greetings"])
+                    msg = sets['current_promo_text'].replace("Hi,", f"{greet},").replace("Hi ", f"{greet} ")
+                    await client.send_message(lead['add_list'], msg)
+                    supabase.table("message_campaign").update({"status": "success", "sent_by": s_name, "updated_at": datetime.now(PHT).isoformat()}).eq("id", lead['id']).execute()
+                    await asyncio.sleep(random.randint(300, 600))
+        except Exception as e: logging.error(f"Worker: {e}")
+        await asyncio.sleep(1800)
+
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("👑 **Sentinel Elite v5.8.7**\n/status | /add_list | /add_account")
+    await event.respond("👑 **Sentinel Elite v5.8.9**\n/status | /add_list | /add_account")
 
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
@@ -40,6 +68,16 @@ async def status(event):
         accs = len(glob.glob("*.session")) - 1
         await event.respond(f"📊 **Audit**\nPending: {pending}\nAccounts: {accs}\nSched: {'ON' if sets['is_sched_active'] else 'OFF'}")
     except Exception as e: await event.respond(f"❌ Status Error: {e}")
+
+@bot.on(events.NewMessage(pattern='/add_list'))
+async def add_list(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📂 **Paste Leads:**")
+        r = await conv.get_response()
+        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', r.text)))
+        new_leads = [{"add_list": u, "status": "pending"} for u in found if len(u) > 4]
+        if new_leads: supabase.table("message_campaign").upsert(new_leads).execute()
+        await event.respond(f"✅ Processed {len(found)} leads.")
 
 @bot.on(events.NewMessage(pattern='/add_account'))
 async def add_account(event):
@@ -66,58 +104,6 @@ async def add_account(event):
         except Exception as e: await event.respond(f"❌ Error: {e}")
         finally: await client.disconnect()
 
-if __name__ == '__main__':
-    restore_sessions()
-    bot.run_until_disconnected()
-
-async def global_worker():
-    while True:
-        try:
-            res = supabase.table("bot_settings").select("*").eq("id", "production").single().execute()
-            sets = res.data
-            if not sets['is_sched_active'] and not sets['is_sending_active']:
-                await asyncio.sleep(60); continue
-            
-            sessions = sorted([f for f in glob.glob("*.session") if "bot.session" not in f])
-            for s_file in sessions:
-                s_name = s_file.replace(".session", "")
-                today = datetime.now(PHT).strftime('%Y-%m-%d')
-                
-                sent_today = supabase.table("message_campaign").select("id", count="exact").eq("sent_by", s_name).gte("updated_at", today).execute().count
-                if sent_today >= 5: continue 
-
-                lead_req = supabase.table("message_campaign").select("*").eq("status", "pending").limit(1).execute()
-                if not lead_req.data: break
-                lead = lead_req.data[0]
-                
-                async with TelegramClient(s_name, API_ID, API_HASH) as client:
-                    greet = random.choice(["Hi", "Hello", "Hey", "Greetings"])
-                    msg = sets['current_promo_text'].replace("Hi,", f"{greet},").replace("Hi ", f"{greet} ")
-                    await client.send_message(lead['add_list'], msg)
-                    
-                    supabase.table("message_campaign").update({
-                        "status": "success", "sent_by": s_name, 
-                        "updated_at": datetime.now(PHT).isoformat()
-                    }).eq("id", lead['id']).execute()
-                    await asyncio.sleep(random.randint(300, 600))
-        except Exception as e: logging.error(f"Worker: {e}")
-        await asyncio.sleep(1800)
-
-@bot.on(events.NewMessage(pattern='/add_list'))
-async def add_list(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Paste Leads:**")
-        r = await conv.get_response()
-        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', r.text)))
-        new_leads = [{"add_list": u, "status": "pending"} for u in found if len(u) > 4]
-        if new_leads: supabase.table("message_campaign").upsert(new_leads).execute()
-        await event.respond(f"✅ Processed {len(found)} leads.")
-
-if __name__ == '__main__':
-    restore_sessions()
-    loop = asyncio.get_event_loop()
-    loop.create_task(global_worker())
-    bot.run_until_disconnected()
 if __name__ == '__main__':
     restore_sessions()
     loop = asyncio.get_event_loop()
