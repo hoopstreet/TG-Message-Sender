@@ -73,3 +73,36 @@ async def list_input_handler(event):
             USER_STATE.pop(event.sender_id)
         except Exception as e:
             await event.respond(f"❌ DB Error: {str(e)[:50]}")
+
+# --- SESSION MANAGEMENT LOGIC ---
+@bot.on(events.CallbackQuery(data=b"add_acc"))
+async def add_acc_init(event):
+    USER_STATE[event.sender_id] = "waiting_phone"
+    await event.respond("📱 **Enter the Phone Number for the new account (with +country code):**")
+
+@bot.on(events.NewMessage(from_users=ADMIN_ID))
+async def session_creator_handler(event):
+    state = USER_STATE.get(event.sender_id)
+    if not state or event.text.startswith('/'): return
+    
+    if state == "waiting_phone":
+        phone = event.text.strip()
+        USER_STATE[event.sender_id] = {"state": "waiting_code", "phone": phone}
+        temp_client = TelegramClient(phone, API_ID, API_HASH)
+        await temp_client.connect()
+        await temp_client.send_code_request(phone)
+        await event.respond(f"📩 **Code sent to {phone}. Enter it here:**")
+        await temp_client.disconnect()
+
+    elif isinstance(state, dict) and state.get("state") == "waiting_code":
+        phone = state["phone"]
+        code = event.text.strip()
+        try:
+            new_client = TelegramClient(phone, API_ID, API_HASH)
+            await new_client.start(phone=phone, code=code)
+            await event.respond(f"✅ **Account `{phone}` added successfully!**")
+            await new_client.disconnect()
+            USER_STATE.pop(event.sender_id)
+        except Exception as e:
+            await event.respond(f"❌ Auth Error: {str(e)[:50]}")
+            USER_STATE.pop(event.sender_id)
