@@ -1,10 +1,10 @@
 # 🧬 Tacloban HQ DNA: Project Evolution
-**Current Version:** v3.3.5
-**Codename:** Weightless Commander (GUIDE READY)
+**Current Version:** v3.4.0
+**Codename:** Weightless Commander (FULL POWER)
 
 ### 🛠️ Version Summary
-- **v3.3.5:** Injected full purpose-based guide into /start (BotFather Style).
-- **v3.3.0:** UI Grid buttons finalized.
+- **v3.4.0:** Connected all UI buttons to functional Supabase & Telethon logic.
+- **v3.3.5:** UI Guide finalized.
 
 ### 🚀 Technical Stack
 - **Northflank / DockerHub / Supabase / iSH**

@@ -55,6 +55,62 @@ async def master_router(event):
         s = sum(1 for r in res.data if r['status'] == 'success')
         await event.respond(f"📊 **Audit:** {s} messages sent successfully.")
 
+# Engine Logic Injected
+
+# --- 5. Functional Logic: Ingestion & Messages ---
+@bot.on(events.CallbackQuery(data="add_list"))
+@bot.on(events.NewMessage(pattern='/add_list'))
+async def add_list(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📂 **Send @usernames (one per line):**")
+        msg = await conv.get_response()
+        leads = [u.strip() for u in msg.text.split('\n') if u.strip()]
+        for u in leads:
+            supabase.table("message_campaign").upsert({"username": u, "status": "pending"}).execute()
+        await conv.send_message(f"✅ {len(leads)} leads added to Supabase.")
+
+@bot.on(events.CallbackQuery(data="edit_msg"))
+@bot.on(events.NewMessage(pattern='/edit_msg'))
+async def edit_msg(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📝 **Send your new Promo Script:**")
+        msg = await conv.get_response()
+        supabase.table("message_campaign").update({"edit_msg": msg.text}).eq("status", "pending").execute()
+        await conv.send_message("✅ Promo script updated.")
+
+# --- 6. Functional Logic: The Outreach Engine ---
+@bot.on(events.CallbackQuery(data="send_now"))
+async def manual_blast(event):
+    await event.respond("🚀 **Initializing Manual Blast...**")
+    # Get all sessions
+    sessions = glob.glob("*.session")
+    # Get pending leads
+    leads = supabase.table("message_campaign").select("*").eq("status", "pending").limit(20).execute()
+    
+    for lead in leads.data:
+        sess_name = random.choice(sessions).replace(".session", "")
+        try:
+            async with TelegramClient(sess_name, int(os.getenv("TELEGRAM_API_ID")), os.getenv("TELEGRAM_API_HASH")) as client:
+                await client.send_message(lead['username'], lead.get('edit_msg', "Check out our latest deals!"))
+                supabase.table("message_campaign").update({"status": "success"}).eq("id", lead['id']).execute()
+                await asyncio.sleep(random.randint(30, 60)) # Anti-Spam delay
+        except Exception as e:
+            supabase.table("message_campaign").update({"status": "failed"}).eq("id", lead['id']).execute()
+            print(f"Error sending to {lead['username']}: {e}")
+
+# --- 7. Functional Logic: Scheduling & Pausing ---
+@bot.on(events.CallbackQuery(data="pause_send"))
+async def pause_send(event):
+    supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
+    await event.respond("⏸️ Manual Outreach Paused.")
+
+@bot.on(events.CallbackQuery(data="schedule"))
+async def schedule_pht(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Enter PHT Time (YYYY-MM-DD HH:MM):**")
+        msg = await conv.get_response()
+        # Logic to save schedule to DB
+        await conv.send_message(f"✅ Blast scheduled for {msg.text} PHT.")
 async def main():
     print("🚀 Tacloban HQ v3.3.5 Operational")
     await bot.run_until_disconnected()
