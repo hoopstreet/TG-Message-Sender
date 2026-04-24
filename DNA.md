@@ -1,3 +1,10 @@
+## [v5.3.0] Sentinel Elite Protocol - 2026-04-24 19:45 PHT
+- **Scheduler:** Implemented Toggle Logic. Clicking /schedule while ON kills active tasks; while OFF starts PHT time-picker.
+- **Safety:** Hard 5-msg limit + multi-account deduplication.
+- **Filters:** Verified active status (7 days), bot-blocking, and link/mention parsing.
+- **Humanization:** Dynamic greeting injection for Bot Detection avoidance.
+
+---
 ## [v5.2.0] Sentinel Final Protocol - 2026-04-24
 - **Schema Mapping:** Fixed `bot_settings` (is_sending_active, current_promo_text) and `message_campaign`.
 - **Safety:** Hard-cap of 5 msgs/acc. Anti-duplicate routing (multi-account safe).

@@ -1,5 +1,5 @@
-# TG Bot Commander Mapping
-- /status: Pulls stats from `message_campaign` and `bot_settings`.
-- /pause: Updates `bot_settings` (is_sending_active=false).
-- /add_list: Filters & inserts into `message_campaign` (status='pending').
-- /edit_msg: Updates `current_promo_text` in `bot_settings`.
+# Official Commander Mapping
+- /schedule: Toggle ON (Pick Time) | Toggle OFF (Stop All).
+- /status: Comprehensive Audit (Daily/Accs/Next Sched).
+- /add_list: Auto-Filter (Bot/Inactive/Duplicate).
+- /edit_msg: Update Promo Text in `bot_settings`.
