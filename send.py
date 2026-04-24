@@ -90,3 +90,43 @@ async def pause(event):
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(bot.run_until_disconnected())
+
+@bot.on(events.NewMessage(pattern='/schedule'))
+async def schedule_handler(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Set Auto-Send Time (PHT)?**\nFormat: `YYYY-MM-DD HH:MM`")
+        r = await conv.get_response()
+        try:
+            # Validate format and insert marker into message_campaign
+            datetime.strptime(r.text, '%Y-%m-%d %H:%M')
+            supabase.table("message_campaign").insert({
+                "add_list": "SCHEDULE_MARKER",
+                "status": "scheduled",
+                "schedule": r.text
+            }).execute()
+            await event.respond(f"✅ **Auto-Send scheduled for {r.text} PHT.**")
+        except ValueError:
+            await event.respond("❌ **Invalid Format.** Use `YYYY-MM-DD HH:MM` (e.g. 2026-04-25 14:00)")
+
+@bot.on(events.NewMessage(pattern='/add_account'))
+async def add_account_handler(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📱 **Enter Phone (+63...):**")
+        phone = (await conv.get_response()).text
+        client = TelegramClient(phone, API_ID, API_HASH)
+        await client.connect()
+        try:
+            await client.send_code_request(phone)
+            await conv.send_message("📩 **OTP Code:**")
+            code = (await conv.get_response()).text
+            await client.sign_in(phone, code)
+            await event.respond(f"✅ **Success! {phone} linked.**")
+        except errors.SessionPasswordNeededError:
+            await conv.send_message("🔐 **2FA Password Required:**")
+            pw = (await conv.get_response()).text
+            await client.sign_in(password=pw)
+            await event.respond(f"✅ **Success! {phone} linked with 2FA.**")
+        except Exception as e:
+            await event.respond(f"❌ **Linking Failed:** {str(e)}")
+        finally:
+            await client.disconnect()
