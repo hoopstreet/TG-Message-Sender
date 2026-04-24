@@ -54,3 +54,5 @@
 - **Validation:** 7-day Activity Check via GetFullUserRequest.
 - **Input:** Supports @username, t.me/links, and plain text.
 - **Filters:** Auto-skips Bots, Deleted Accounts, and Duplicates in Supabase.
+## [v5.3.1] Handler Fix - 2026-04-24 19:57 PHT
+- Fixed non-responsive /edit_msg and /schedule triggers.

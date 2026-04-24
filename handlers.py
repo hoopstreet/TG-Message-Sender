@@ -1,33 +1,45 @@
+from telethon import events
+import pytz, glob, os
+from datetime import datetime
 
-@bot.on(events.NewMessage(pattern='/edit_msg'))
-async def edit_promo(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📝 **Send your new Promo Script:**\n(Use 'Hi,' or 'Hi [Name]' as the placeholder for random greetings)")
-        r = await conv.get_response()
-        supabase.table("bot_settings").update({"current_promo_text": r.text}).eq("id", "production").execute()
-        await event.respond("✅ **Promo Script Updated Successfully!**")
+PHT = pytz.timezone('Asia/Manila')
 
-@bot.on(events.NewMessage(pattern='/add_account'))
-async def add_account_guide(event):
-    guide = (
-        "📱 **How to add a new account:**\n\n"
-        "1. Open iSH on your iPhone.\n"
-        "2. Run: `python3 login.py` (if you have the login script).\n"
-        "3. Enter the phone number and OTP.\n"
-        "4. Once the `.session` file is created, push it to GitHub.\n\n"
-        "Current Active Sessions: " + str(len(glob.glob('*.session'))-1)
-    )
-    await event.respond(guide)
+def register_handlers(bot, supabase, get_settings):
+    
+    @bot.on(events.NewMessage(pattern='/edit_msg'))
+    async def edit_promo(event):
+        async with bot.conversation(event.sender_id) as conv:
+            await conv.send_message("📝 **Paste your new iGaming Promo Script:**\n(Greeting placeholders like 'Hi' will be randomized automatically)")
+            r = await conv.get_response()
+            supabase.table("bot_settings").update({"current_promo_text": r.text}).eq("id", "production").execute()
+            await event.respond("✅ **Promo Script Updated and Saved to Cloud.**")
 
-@bot.on(events.NewMessage(pattern='/start'))
-async def start_guide(event):
-    guide = (
-        "👑 **Weightless Commander v5.3.0**\n\n"
-        "/status - 📊 View real-time stats\n"
-        "/add_list - 📂 Add & filter leads\n"
-        "/edit_msg - 📝 Change promo text\n"
-        "/schedule - 📅 Toggle/Set schedule\n"
-        "/add_account - 📱 Manage sessions\n"
-        "/pause - ⏸️ Stop all activities"
-    )
-    await event.respond(guide)
+    @bot.on(events.NewMessage(pattern='/add_account'))
+    async def add_account(event):
+        count = len(glob.glob('*.session')) - 1
+        msg = (f"📱 **Account Manager**\n\n"
+               f"Current active sessions: **{count}**\n"
+               "To add a new number:\n"
+               "1. Use `login.py` in iSH.\n"
+               "2. Upload the new `.session` to GitHub.\n"
+               "3. Northflank will auto-detect the new account.")
+        await event.respond(msg)
+
+    @bot.on(events.NewMessage(pattern='/schedule'))
+    async def schedule_toggle(event):
+        sets = get_settings()
+        if sets['is_sched_active']:
+            supabase.table("bot_settings").update({"is_sched_active": False}).eq("id", "production").execute()
+            supabase.table("message_campaign").delete().eq("status", "scheduled").execute()
+            await event.respond("⏸️ **Schedule Cleared & Stopped.**")
+        else:
+            async with bot.conversation(event.sender_id) as conv:
+                await conv.send_message("📅 **Enter Start Time (PHT):**\nFormat: `YYYY-MM-DD HH:MM AM/PM`")
+                r = (await conv.get_response()).text
+                try:
+                    local_dt = PHT.localize(datetime.strptime(r, '%Y-%m-%d %I:%M %p'))
+                    utc_dt = local_dt.astimezone(pytz.utc).isoformat()
+                    supabase.table("bot_settings").update({"is_sched_active": True}).eq("id", "production").execute()
+                    supabase.table("message_campaign").insert({"add_list": "SCHEDULE_MARKER", "status": "scheduled", "updated_at": utc_dt}).execute()
+                    await event.respond(f"✅ **Sentinels set for:** {r} (PHT)")
+                except: await event.respond("❌ Use: `2026-04-25 02:00 PM`")
