@@ -106,3 +106,73 @@ async def session_creator_handler(event):
         except Exception as e:
             await event.respond(f"❌ Auth Error: {str(e)[:50]}")
             USER_STATE.pop(event.sender_id)
+
+# --- MESSAGE CONFIGURATION ---
+@bot.on(events.CallbackQuery(data=b"edit_msg"))
+async def edit_msg_init(event):
+    USER_STATE[event.sender_id] = "waiting_msg"
+    await event.respond("📝 **Send me the new message text:**\n\n*Use {name} to personalize if needed.*")
+
+@bot.on(events.NewMessage(from_users=ADMIN_ID))
+async def msg_save_handler(event):
+    if USER_STATE.get(event.sender_id) == "waiting_msg":
+        new_text = event.text
+        supabase.table("bot_settings").upsert({"key": "active_message", "value": new_text}).execute()
+        await event.respond(f"✅ **Message Updated:**\n\n{new_text}")
+        USER_STATE.pop(event.sender_id)
+
+# --- THE OUTREACH ENGINE ---
+@bot.on(events.CallbackQuery(data=b"run_now"))
+async def run_outreach(event):
+    global IS_SENDING
+    if IS_SENDING:
+        await event.answer("⚠️ Engine is already running!", alert=True)
+        return
+    
+    IS_SENDING = True
+    await event.respond("🚀 **Engine Started.** Monitoring logs...")
+    
+    while IS_SENDING:
+        # 1. Fetch active message
+        msg_res = supabase.table("bot_settings").select("value").eq("key", "active_message").single().execute()
+        msg_text = msg_res.data['value'] if msg_res.data else "Hello!"
+        
+        # 2. Get next pending target
+        target_res = supabase.table("targets").select("*").eq("status", "pending").limit(1).execute()
+        if not target_res.data:
+            await event.respond("🏁 **Queue empty. Engine standby.**")
+            break
+            
+        target = target_res.data[0]
+        user_to_hit = target['username']
+        
+        # 3. Rotate through session files
+        sessions = [f.replace('.session', '') for f in glob.glob("*.session") if "bot_control" not in f]
+        if not sessions:
+            await event.respond("❌ **No sender accounts found!** Use 'Add Acc' first.")
+            break
+            
+        selected_acc = random.choice(sessions)
+        
+        try:
+            async with TelegramClient(selected_acc, API_ID, API_HASH) as client:
+                await client.send_message(user_to_hit, msg_text)
+                supabase.table("targets").update({
+                    "status": "success", 
+                    "sent_by": selected_acc,
+                    "updated_at": datetime.now(PHT).isoformat()
+                }).eq("id", target['id']).execute()
+                await event.respond(f"✅ Sent to @{user_to_hit} via `{selected_acc}`")
+                
+            # Random delay to prevent bans (2.5 to 5 minutes)
+            await asyncio.sleep(random.randint(150, 300))
+            
+        except Exception as e:
+            await event.respond(f"⚠️ Error with `{selected_acc}`: {str(e)[:50]}")
+            # If account is restricted/banned, mark target as failed to move on
+            if "peer" in str(e).lower() or "flood" in str(e).lower():
+                await asyncio.sleep(900) # Wait 15 mins on flood
+    
+    IS_SENDING = False
+
+print("🔥 Tacloban HQ v2.4.0 FULLY LOADED.")
