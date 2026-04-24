@@ -55,3 +55,33 @@ async def main():
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
+@bot.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    guide_text = (
+        "I can help you create and manage your Outreach Campaigns. "
+        "If you're new to the system, please see the DNA.md manual.\n\n"
+        "**You can control me by sending these commands:**\n\n"
+        "**🚀 Campaigns**\n"
+        "/send_now - execute manual blast\n"
+        "/schedule - set PHT execution time\n"
+        "/status - get campaign audit report\n\n"
+        "**📂 Data Management**\n"
+        "/add_list - import @usernames bulk\n"
+        "/edit_msg - change the promo script\n\n"
+        "**📱 Account & Settings**\n"
+        "/add_account - view/assign session files\n"
+        "/pause_send - kill manual outreach loop\n"
+        "/pause_sched - toggle scheduler state\n\n"
+        "**Web Apps**\n"
+        "/supabase - get direct database link\n"
+        "/northflank - check server logs"
+    )
+    
+    buttons = [
+        [Button.inline("🚀 Send Now", data="send_now"), Button.inline("📅 Schedule", data="schedule")],
+        [Button.inline("📊 Status", data="status"), Button.inline("📂 Add List", data="add_list")],
+        [Button.inline("📝 Edit Msg", data="edit_msg"), Button.inline("📱 Add Acc", data="add_account")],
+        [Button.inline("⏸️ Pause Send", data="pause_send"), Button.inline("⏸️ Pause Sched", data="pause_sched")]
+    ]
+    
+    await event.respond(guide_text, buttons=buttons)

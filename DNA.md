@@ -1,13 +1,10 @@
 # 🧬 Tacloban HQ DNA: Project Evolution
-**Current Version:** v3.0.0
-**Codename:** Weightless Commander (STABLE)
+**Current Version:** v3.1.0
+**Codename:** Weightless Commander
 
 ### 🛠️ Version Summary
-- **v3.0.0:** Final Service Bridge. Background scheduler and Outreach engine active.
-- **v2.9.0:** Master Router & UI Mapping.
-- **v2.8.5:** SQL Audit Triggers.
+- **v3.1.0:** Professional BotFather-style /start manual injected.
+- **v3.0.0:** Stable Release - Final Service Bridge.
 
 ### 🚀 Technical Stack
-- **Northflank Server** (Live)
-- **DockerHub** (Auto-Build)
-- **Supabase** (Central Brain)
+- **Northflank / DockerHub / Supabase / iSH**

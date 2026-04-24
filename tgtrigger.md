@@ -20,3 +20,4 @@
 ## ✅ v2.8.5 SQL Audit: Updated 'updated_at' trigger for /status command.
 ## ✅ v2.9.0 Final Mapping: Verified all callback data matches Supabase schema.
 ## 🏆 v3.0.0 Milestone: Full System integration complete. Service Bridge Active.
+## ✅ v3.1.0 UI Update: /start menu now matches professional BotFather style.
