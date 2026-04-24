@@ -11,3 +11,8 @@
 | /edit_msg | edit_msg | TEXT | Promo Script Content |
 | /add_account | add_account | TEXT | Session Assignment |
 | /status | updated_at | TIMESTAMPTZ | PHT Completion Audit |
+
+## ✅ v2.6.0 Sync Confirmation
+- All triggers confirmed mapping to `public.message_campaign`.
+- Dual-Pause logic verified: `status` (manual) | `pause_sched` (auto).
+- Latest push triggered at: 2026-04-24 PHT.
