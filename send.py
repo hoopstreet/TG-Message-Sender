@@ -16,33 +16,52 @@ SCHED_ACTIVE = True
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    guide = (
-        "👑 **Tacloban HQ: Weightless Commander**\n\n"
-        "/start - 👑 Open Command Center Guide\n"
-        "/send_now - 🚀 Trigger Immediate Manual Blast\n"
-        "/schedule - 📅 Set Date/Time for Auto-Send\n"
-        "/pause_send - ⏸️ Stop Active Manual Sending\n"
-        "/pause_sched - ⏸️ Stop Active Scheduled Tasks\n"
-        "/add_list - 📂 Import New @Username List\n"
-        "/edit_msg - 📝 Update Promotional Text\n"
-        "/add_account - 📱 Link New Sender Session\n"
-        "/status - 📊 View Global Audit & Stats"
-    )
-    await event.respond(guide)
+    await event.respond("👑 **Tacloban HQ: Weightless Commander**\n\n/start - 👑 Guide\n/send_now - 🚀 Blast\n/schedule - 📅 Schedule\n/pause_send - ⏸️ Stop Send\n/pause_sched - ⏸️ Stop Sched\n/add_list - 📂 List\n/edit_msg - 📝 Script\n/add_account - 📱 Account\n/status - 📊 Stats")
 
-@bot.on(events.NewMessage(pattern='/edit_msg'))
-async def edit_msg(event):
+@bot.on(events.NewMessage(pattern='/add_account'))
+async def add_acc(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📝 **Send your new Promo Script:**")
-        new_text = (await conv.get_response()).text
-        supabase.table("message_campaign").update({"edit_msg": new_text}).eq("status", "pending").execute()
-        await conv.send_message("✅ **Promo script updated.**")
+        await conv.send_message("📱 **Step 1: Enter the Phone Number (e.g., +639...)**")
+        phone = (await conv.get_response()).text.strip()
+        client = TelegramClient(phone, API_ID, API_HASH)
+        await client.connect()
+        
+        # Fixing OTP Trigger logic
+        try:
+            sent_code = await client.send_code_request(phone)
+            await conv.send_message("📩 **Step 2: Enter the OTP code received:**")
+            otp = (await conv.get_response()).text.strip()
+            await client.sign_in(phone, otp, hash=sent_code.phone_code_hash)
+        except errors.SessionPasswordNeededError:
+            await conv.send_message("🔐 **Step 3: Enter 2FA PIN:**")
+            await client.sign_in(password=(await conv.get_response()).text.strip())
+        except Exception as e:
+            await conv.send_message(f"❌ Error: {e}")
+            return
+
+        await conv.send_message(f"✅ Success! {phone} is now linked to the HQ.")
+        await client.disconnect()
+
+@bot.on(events.NewMessage(pattern='/schedule'))
+async def schedule(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Target Date & Time?**\nExample: `2026-04-25 14:00` (PHT)")
+        target = (await conv.get_response()).text.strip()
+        
+        # WRITING TO SUPABASE: Adding a placeholder row with the scheduled time
+        supabase.table("message_campaign").insert({
+            "username": "SCHEDULE_MARKER", 
+            "status": "scheduled", 
+            "created_at": target 
+        }).execute()
+        
+        await conv.send_message(f"📅 **Scheduler Sync Active.** Deployment set for `{target}`")
 
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
     res = supabase.table("message_campaign").select("*").execute().data
     sessions = glob.glob("*.session")
-    total = len(res)
+    total = sum(1 for x in res if x['username'] != "SCHEDULE_MARKER")
     sent = sum(1 for x in res if x['status'] == 'success')
     fail = sum(1 for x in res if x['status'] == 'failed')
     pend = sum(1 for x in res if x['status'] == 'pending')
@@ -58,23 +77,24 @@ async def status(event):
     )
     await event.respond(report)
 
-@bot.on(events.NewMessage(pattern='/schedule'))
-async def schedule(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📅 **Target Date & Time?**\nExample: `2026-04-25 14:00` (PHT)")
-        target = (await conv.get_response()).text
-        await conv.send_message(f"📅 **Scheduler Sync Active.** Deployment set for `{target}`")
-
 @bot.on(events.NewMessage(pattern='/add_list'))
 async def add_list(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Send List:** (Auto-Deduplicate Active)")
+        await conv.send_message("📂 **Send List: (Auto-Deduplicate Active)**")
         msg = await conv.get_response()
         found = re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', msg.text)
         existing = {r['username'] for r in supabase.table("message_campaign").select("username").execute().data}
         new_leads = [{"username": u, "status": "pending"} for u in found if u not in existing]
         if new_leads: supabase.table("message_campaign").insert(new_leads).execute()
-        await conv.send_message(f"✅ **Integrated:** {len(new_leads)} unique leads added.")
+        await conv.send_message(f"✅ Integrated: {len(new_leads)} unique leads added.")
+
+@bot.on(events.NewMessage(pattern='/edit_msg'))
+async def edit_msg(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📝 **Send your new Promo Script:**")
+        new_text = (await conv.get_response()).text
+        supabase.table("message_campaign").update({"edit_msg": new_text}).eq("status", "pending").execute()
+        await conv.send_message("✅ **Promo script updated.**")
 
 @bot.on(events.NewMessage(pattern='/send_now'))
 async def blast(event):
@@ -106,23 +126,6 @@ async def p_sched(event):
     global SCHED_ACTIVE
     SCHED_ACTIVE = not SCHED_ACTIVE
     await event.respond(f"📅 **Scheduler {'RESUMED' if SCHED_ACTIVE else 'PAUSED'}.**")
-
-@bot.on(events.NewMessage(pattern='/add_account'))
-async def add_acc(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📱 **Phone Number?** (+63...)")
-        phone = (await conv.get_response()).text.strip()
-        client = TelegramClient(phone, API_ID, API_HASH)
-        await client.connect()
-        await client.send_code_request(phone)
-        await conv.send_message("📩 **OTP?**")
-        otp = (await conv.get_response()).text.strip()
-        try: await client.sign_in(phone, otp)
-        except errors.SessionPasswordNeededError:
-            await conv.send_message("🔐 **2FA PIN?**")
-            await client.sign_in(password=(await conv.get_response()).text.strip())
-        await conv.send_message(f"✅ {phone} Linked.")
-        await client.disconnect()
 
 async def main(): await bot.run_until_disconnected()
 if __name__ == '__main__': asyncio.get_event_loop().run_until_complete(main())
