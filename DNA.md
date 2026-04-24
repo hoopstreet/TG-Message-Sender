@@ -11,3 +11,5 @@
 - **Humanization:** 4-8 min tactical delays + random greeting injection.
 ## [v5.5.1] Tacloban Continuity Patch - 2026-04-24
 - Enabled Daily Auto-Cycle for scheduled tasks.
+## [v5.7.0] Omnibus Cloud-Sync - 2026-04-24
+- Added Supabase Session Vault (Persistence across restarts).
