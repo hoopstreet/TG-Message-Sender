@@ -1,4 +1,4 @@
-# Official Trigger Mapping [v4.8.0]
+# Official Weightless Commander Mapping
 /start        -> 👑 Guide
 /status       -> 📊 Stats
 /pause        -> ⏸️ Stop
