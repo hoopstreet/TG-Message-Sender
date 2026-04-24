@@ -16,208 +16,54 @@ try:
 except Exception as e:
     print(f"❌ Initialization Error: {e}")
 
-# --- GLOBAL STATE ---
-SCHEDULER_ACTIVE = True
 SENDING_ACTIVE = True
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("👑 **Tacloban HQ: Stealth Commander v3.5.5**\n/send_now | /status | /pause_send | /add_list | /add_account")
-
-@bot.on(events.NewMessage(pattern='/status'))
-async def status_report(event):
-    data = supabase.table("message_campaign").select("*").execute().data
-    sessions = glob.glob("*.session")
-    report = (
-        f"📊 **HQ Audit**\nTotal: {len(data)}\n"
-        f"✅ Sent: {sum(1 for x in data if x['status'] == 'success')}\n"
-        f"❌ Fail: {sum(1 for x in data if x['status'] == 'failed')}\n"
-        f"📱 Sessions: {len(sessions)}\n"
-        f"⚡ Send: {'ACTIVE' if SENDING_ACTIVE else 'PAUSED'}"
-    )
-    await event.respond(report)
+    await event.respond("👑 **Tacloban HQ: Stealth Commander v3.7.2**\n/send_now | /status | /add_list | /add_account | /cleanup")
 
 @bot.on(events.NewMessage(pattern='/send_now'))
 async def stealth_blast(event):
     global SENDING_ACTIVE
     SENDING_ACTIVE = True
-    await event.respond("🚀 **Stealth Blast Initialized.** (30-90s variable delays)")
-    
+    await event.respond("🚀 **Blast Initialized.** Tagging accounts for audit...")
     leads = supabase.table("message_campaign").select("*").eq("status", "pending").execute()
     sessions = glob.glob("*.session")
-    
     for lead in leads.data:
         if not SENDING_ACTIVE: break
-        
-        # Pick session and simulate 'typing'
-        s_name = random.choice(sessions).replace(".session", "")
+        s_file = random.choice(sessions)
+        s_name = s_file.replace(".session", "")
         try:
             async with TelegramClient(s_name, API_ID, API_HASH) as client:
-                # 1. Human Delay: 'Looking up user'
-                await asyncio.sleep(random.randint(5, 15))
-                
-                # 2. Check if restricted
-                me = await client.get_me()
-                
-                # 3. Send message
-                await client.send_message(lead['username'], lead.get('edit_msg', "Hi!"))
-                supabase.table("message_campaign").update({"status": "success"}).eq("id", lead['id']).execute()
-                
-                # 4. Long Cooldown (Anti-Ban)
-                wait = random.randint(60, 120) 
-                logging.info(f"Success. Cooling down for {wait}s...")
-                await asyncio.sleep(wait)
-                
-        except errors.FloodWaitError as e:
-            await event.respond(f"⚠️ **FloodWait:** Account {s_name} must rest for {e.seconds}s.")
-            await asyncio.sleep(e.seconds)
+                await asyncio.sleep(random.randint(5, 10))
+                await client.send_message(lead['username'], lead.get('edit_msg', "Check this out!"))
+                # UPDATE LOGIC: Save the sender identity
+                supabase.table("message_campaign").update({
+                    "status": "success", 
+                    "sender_phone": s_name
+                }).eq("id", lead['id']).execute()
+                await asyncio.sleep(random.randint(60, 120))
         except Exception as e:
             supabase.table("message_campaign").update({"status": "failed"}).eq("id", lead['id']).execute()
 
-@bot.on(events.NewMessage(pattern='/pause_send'))
-async def pause_all(event):
-    global SENDING_ACTIVE
-    SENDING_ACTIVE = False
-    await event.respond("⏸️ **Manual Sending Paused.**")
+@bot.on(events.NewMessage(pattern='/status'))
+async def status_report(event):
+    res = supabase.table("message_campaign").select("sender_phone, status").execute()
+    stats = {}
+    for row in res.data:
+        p = row.get('sender_phone') or "Legacy/Unknown"
+        if p not in stats: stats[p] = 0
+        if row['status'] == 'success': stats[p] += 1
+    acc_report = "\n".join([f"📱 {p}: {c} sends" for p, c in stats.items()])
+    await event.respond(f"📊 **HQ Deep Audit**\n{acc_report}\n\nEngine: **Active**")
 
-@bot.on(events.NewMessage(pattern='/pause_sched'))
-async def pause_sched(event):
-    global SCHEDULER_ACTIVE
-    SCHEDULER_ACTIVE = False
-    await event.respond("⏸️ **Scheduler Deactivated.**")
-
-@bot.on(events.NewMessage(pattern='/add_account'))
-async def otp_wizard(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📱 **Phone Number?**")
-        p = (await conv.get_response()).text
-        c = TelegramClient(p, API_ID, API_HASH)
-        await c.connect()
-        await c.send_code_request(p)
-        await conv.send_message("📩 **OTP?**")
-        o = (await conv.get_response()).text
-        try:
-            await c.sign_in(p, o)
-            await conv.send_message("✅ Linked.")
-        except errors.SessionPasswordNeededError:
-            await conv.send_message("🔐 **2FA Password?**")
-            pw = (await conv.get_response()).text
-            await c.sign_in(password=pw)
-            await conv.send_message("✅ Linked with 2FA.")
-        await c.disconnect()
+@bot.on(events.NewMessage(pattern='/cleanup'))
+async def cleanup(event):
+    supabase.table("message_campaign").delete().eq("status", "failed").execute()
+    await event.respond("🧹 **Failed leads cleared.**")
 
 async def main():
-    print("🚀 Stealth Engine v3.5.5 Operational")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(main())
-
-@bot.on(events.NewMessage(pattern='/edit_msg'))
-async def update_script(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📝 **Send New Global Promo Message:**")
-        new_msg = (await conv.get_response()).text
-        # Real-time update for all pending leads
-        supabase.table("message_campaign").update({"edit_msg": new_msg}).eq("status", "pending").execute()
-        await conv.send_message("🔄 **Sync Complete.** All future sends will use this script.")
-
-@bot.on(events.NewMessage(pattern='/add_list'))
-async def add_list_v2(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Send your list (@, links, or text):**")
-        msg = await conv.get_response()
-        from ingest import clean_and_upsert
-        count = clean_and_upsert(msg.text, os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-        await conv.send_message(f"✅ **Batch Processed.** {count} unique leads added to the queue.")
-
-@bot.on(events.NewMessage(pattern='/status'))
-async def status_deep_audit(event):
-    await event.respond("📊 **Generating Deep Audit...**")
-    
-    # 1. Database Pull
-    data = supabase.table("message_campaign").select("*").execute().data
-    sessions = glob.glob("*.session")
-    
-    # 2. Global Totals
-    total = len(data)
-    success = sum(1 for x in data if x['status'] == 'success')
-    failed = sum(1 for x in data if x['status'] == 'failed')
-    pending = sum(1 for x in data if x['status'] == 'pending')
-    
-    # 3. Account Health Check
-    active_accs = len(sessions)
-    # Estimate daily (Successes in the last 24h)
-    # This assumes your Supabase has a 'created_at' or 'updated_at' column
-    
-    report = (
-        "👑 **Tacloban HQ: COMMAND STATUS**\n"
-        "--------------------------\n"
-        f"📈 **Total Leads:** {total}\n"
-        f"✅ **Sent (Total):** {success}\n"
-        f"❌ **Failed:** {failed}\n"
-        f"⏳ **Queued:** {pending}\n\n"
-        f"📱 **Active Sessions:** {active_accs}\n"
-        f"🔄 **Sync Mode:** Real-Time\n"
-        f"🛡️ **Stealth Mode:** v3.5.5 Anti-Ban Active\n"
-        "--------------------------\n"
-        "Engine: **Ready to Blast**"
-    )
-    await event.respond(report)
-
-@bot.on(events.NewMessage(pattern='/schedule'))
-async def set_schedule(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📅 **Target PHT Time (24h format):**\nExample: `2026-04-25 14:00`")
-        time_msg = (await conv.get_response()).text
-        try:
-            # Save to a dedicated schedules table or a global variable
-            # For now, let's confirm the intent
-            await conv.send_message(f"✅ **Deployment Set:** Engine will trigger at `{time_msg}` PHT.")
-        except:
-            await conv.send_message("❌ Invalid format. Use YYYY-MM-DD HH:MM")
-
-@bot.on(events.NewMessage(pattern='/pause_sched'))
-async def stop_sched(event):
-    global SCHEDULER_ACTIVE
-    SCHEDULER_ACTIVE = False
-    await event.respond("⏸️ **Scheduled tasks suspended.**")
-
-async def get_account_stats():
-    res = supabase.table("message_campaign").select("sender_phone, status").execute()
-    stats = {}
-    for row in res.data:
-        phone = row.get('sender_phone', 'Unknown')
-        if phone not in stats: stats[phone] = 0
-        if row['status'] == 'success': stats[phone] += 1
-    return stats
-
-@bot.on(events.NewMessage(pattern='/status'))
-async def status_deep_audit_v2(event):
-    data = supabase.table("message_campaign").select("*").execute().data
-    acc_stats = await get_account_stats()
-    sessions = glob.glob("*.session")
-    
-    # Formatting the Account List
-    acc_report = "\n".join([f"📱 {phone}: {count} sends" for phone, count in acc_stats.items()])
-    
-    report = (
-        "👑 **Tacloban HQ: COMMAND STATUS**\n"
-        "--------------------------\n"
-        f"📈 **Total Leads:** {len(data)}\n"
-        f"✅ **Sent:** {sum(1 for x in data if x['status'] == 'success')}\n"
-        f"❌ **Failed:** {sum(1 for x in data if x['status'] == 'failed')}\n"
-        "--------------------------\n"
-        "**Per Account Performance:**\n"
-        f"{acc_report}\n"
-        "--------------------------\n"
-        f"📱 **Active Sessions:** {len(sessions)}\n"
-        "Engine: **Ready**"
-    )
-    await event.respond(report)
-
-@bot.on(events.NewMessage(pattern='/cleanup'))
-async def cleanup_list(event):
-    # Remove failed or missing leads to keep the pending list "tight"
-    supabase.table("message_campaign").delete().eq("status", "failed").execute()
-    await event.respond("🧹 **List Organized.** Failed/Invalid entries removed from queue.")
