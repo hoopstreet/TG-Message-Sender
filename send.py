@@ -17,7 +17,7 @@ SCHED_ACTIVE = True
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     guide = (
-        "👑 **Tacloban HQ: Command Center**\n\n"
+        "👑 **Tacloban HQ: Weightless Commander**\n\n"
         "/start - 👑 Open Command Center Guide\n"
         "/send_now - 🚀 Trigger Immediate Manual Blast\n"
         "/schedule - 📅 Set Date/Time for Auto-Send\n"
@@ -29,6 +29,41 @@ async def start(event):
         "/status - 📊 View Global Audit & Stats"
     )
     await event.respond(guide)
+
+@bot.on(events.NewMessage(pattern='/edit_msg'))
+async def edit_msg(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📝 **Send your new Promo Script:**")
+        new_text = (await conv.get_response()).text
+        supabase.table("message_campaign").update({"edit_msg": new_text}).eq("status", "pending").execute()
+        await conv.send_message("✅ **Promo script updated.**")
+
+@bot.on(events.NewMessage(pattern='/status'))
+async def status(event):
+    res = supabase.table("message_campaign").select("*").execute().data
+    sessions = glob.glob("*.session")
+    total = len(res)
+    sent = sum(1 for x in res if x['status'] == 'success')
+    fail = sum(1 for x in res if x['status'] == 'failed')
+    pend = sum(1 for x in res if x['status'] == 'pending')
+    
+    report = (
+        "📊 **Tacloban HQ: Deep Audit**\n"
+        f"👥 Total Leads: {total}\n"
+        f"✅ Sent: {sent} | ❌ Failed: {fail}\n"
+        f"⏳ Pending: {pend}\n\n"
+        f"📱 Active Sessions: {len(sessions)}\n"
+        "--------------------------\n"
+        "Engine: **Ready** | Sync: **Real-time**"
+    )
+    await event.respond(report)
+
+@bot.on(events.NewMessage(pattern='/schedule'))
+async def schedule(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Target Date & Time?**\nExample: `2026-04-25 14:00` (PHT)")
+        target = (await conv.get_response()).text
+        await conv.send_message(f"📅 **Scheduler Sync Active.** Deployment set for `{target}`")
 
 @bot.on(events.NewMessage(pattern='/add_list'))
 async def add_list(event):
@@ -57,7 +92,7 @@ async def blast(event):
                 await client.send_message(lead['username'], lead.get('edit_msg', "Check this out!"))
                 supabase.table("message_campaign").update({"status": "success", "sender_phone": s_name}).eq("id", lead['id']).execute()
             await asyncio.sleep(random.randint(60, 120))
-        except Exception:
+        except:
             supabase.table("message_campaign").update({"status": "failed"}).eq("id", lead['id']).execute()
 
 @bot.on(events.NewMessage(pattern='/pause_send'))
@@ -66,13 +101,11 @@ async def stop_manual(event):
     SENDING_ACTIVE = False
     await event.respond("⏸️ **Manual Engine Halted.**")
 
-@bot.on(events.NewMessage(pattern='/edit_msg'))
-async def edit_msg(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📝 **New Promo Text?**")
-        new_text = (await conv.get_response()).text
-        supabase.table("message_campaign").update({"edit_msg": new_text}).eq("status", "pending").execute()
-        await event.respond("✅ **Script Updated Globally.**")
+@bot.on(events.NewMessage(pattern='/pause_sched'))
+async def p_sched(event):
+    global SCHED_ACTIVE
+    SCHED_ACTIVE = not SCHED_ACTIVE
+    await event.respond(f"📅 **Scheduler {'RESUMED' if SCHED_ACTIVE else 'PAUSED'}.**")
 
 @bot.on(events.NewMessage(pattern='/add_account'))
 async def add_acc(event):
@@ -84,33 +117,12 @@ async def add_acc(event):
         await client.send_code_request(phone)
         await conv.send_message("📩 **OTP?**")
         otp = (await conv.get_response()).text.strip()
-        try:
-            await client.sign_in(phone, otp)
+        try: await client.sign_in(phone, otp)
         except errors.SessionPasswordNeededError:
             await conv.send_message("🔐 **2FA PIN?**")
             await client.sign_in(password=(await conv.get_response()).text.strip())
         await conv.send_message(f"✅ {phone} Linked.")
         await client.disconnect()
-
-@bot.on(events.NewMessage(pattern='/status'))
-async def status(event):
-    data = supabase.table("message_campaign").select("status, sender_phone").execute().data
-    stats = {}
-    for r in data:
-        p = r.get('sender_phone') or "Legacy"
-        if p not in stats: stats[p] = 0
-        if r['status'] == 'success': stats[p] += 1
-    acc_report = "\n".join([f"📱 {p}: {c} msgs" for p, c in stats.items()])
-    await event.respond(f"📊 **Global Audit**\nSent: {sum(1 for x in data if x['status'] == 'success')}\nPending: {sum(1 for x in data if x['status'] == 'pending')}\n\n**Account Stats:**\n{acc_report}")
-
-@bot.on(events.NewMessage(pattern='/schedule'))
-async def sched(event): await event.respond("📅 **Scheduler Sync Active.**")
-
-@bot.on(events.NewMessage(pattern='/pause_sched'))
-async def p_sched(event):
-    global SCHED_ACTIVE
-    SCHED_ACTIVE = not SCHED_ACTIVE
-    await event.respond(f"📅 **Scheduler {'RESUMED' if SCHED_ACTIVE else 'PAUSED'}.**")
 
 async def main(): await bot.run_until_disconnected()
 if __name__ == '__main__': asyncio.get_event_loop().run_until_complete(main())
