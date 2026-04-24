@@ -113,3 +113,24 @@ async def blast(event):
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(bot.run_until_disconnected())
+
+@bot.on(events.NewMessage(pattern='/add_list'))
+async def add_list(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📂 **Paste Lead List (@usernames):**")
+        r = await conv.get_response()
+        if r:
+            found = list(set(re.findall(r'(?:@)?([a-zA-Z0-9_]{5,32})', r.text)))
+            leads = [{"username": u, "status": "pending"} for u in found]
+            if leads: supabase.table("targets").insert(leads).execute()
+            await event.respond(f"✅ **Imported {len(leads)} unique leads.**")
+
+@bot.on(events.NewMessage(pattern='/pause_send'))
+async def stop_send(event):
+    supabase.table("bot_settings").update({"is_sending_active": False}).eq("id", "production").execute()
+    await event.respond("⏸️ **Kill-Signal Sent. Manual sending halted.**")
+
+@bot.on(events.NewMessage(pattern='/pause_sched'))
+async def stop_sched(event):
+    supabase.table("bot_settings").update({"is_sched_active": False}).eq("id", "production").execute()
+    await event.respond("📅 **Scheduled Tasks PAUSED.**")
