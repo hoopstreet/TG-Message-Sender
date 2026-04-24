@@ -1,8 +1,5 @@
-# Official Weightless Commander Mapping
-/start        -> 👑 Guide
-/status       -> 📊 Stats
-/pause        -> ⏸️ Stop
-/add_list     -> 📂 List
-/edit_msg     -> 📝 Script
-/schedule     -> 📅 Schedule
-/add_account  -> 📱 Account
+# TG Bot Commander Mapping
+- /status: Pulls stats from `message_campaign` and `bot_settings`.
+- /pause: Updates `bot_settings` (is_sending_active=false).
+- /add_list: Filters & inserts into `message_campaign` (status='pending').
+- /edit_msg: Updates `current_promo_text` in `bot_settings`.

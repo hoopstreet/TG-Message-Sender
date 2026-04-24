@@ -1,3 +1,10 @@
+## [v5.2.0] Sentinel Final Protocol - 2026-04-24
+- **Schema Mapping:** Fixed `bot_settings` (is_sending_active, current_promo_text) and `message_campaign`.
+- **Safety:** Hard-cap of 5 msgs/acc. Anti-duplicate routing (multi-account safe).
+- **Filtering:** Deep-scan for @usernames, links, and activity within 7 days.
+- **Humanization:** Random Greeting Injection (Hi/Hello/Hey) + 3-6 min tactical delays.
+
+---
 ## [v5.0.0] Sentinel Master Protocol - 2026-04-24 18:35 PHT
 - **Engine:** Automated Account Switching (Routing) with 5-msg cap per account.
 - **Safety:** Anti-Duplicate Global Lock (Prevent same user overlap).
