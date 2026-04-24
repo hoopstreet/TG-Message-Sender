@@ -45,7 +45,7 @@ async def global_worker():
                     }).eq("id", lead['id']).execute()
                     await asyncio.sleep(random.randint(240, 480))
             except: continue
-        await asyncio.sleep(600)
+        await asyncio.sleep(3600) # Deep sleep after daily cap
 
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
