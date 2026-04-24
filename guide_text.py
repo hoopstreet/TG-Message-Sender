@@ -1,14 +1,14 @@
-GUIDE = """
-🚀 **Tacloban HQ v2.4.0**
-━━━━━━━━━━━━━━━━━━━━
-Welcome, Command Center. Use the buttons below to manage your outreach.
-
-📊 **Status**: Check total/daily success rates.
-📝 **Edit Msg**: Update your pitch script.
-📂 **Add List**: Paste @usernames to the queue.
-📱 **Add Acc**: Link a new sender number.
-🚀 **Send Now**: Start the automated engine.
-⏸️ **Stop**: Gracefully halt operations.
-
-*Status: System Online (Northflank)*
-"""
+GUIDE = (
+    "👑 **Tacloban HQ v2.3.0**\n"
+    "Multi-Account Outreach Management\n\n"
+    "**🕹️ Control Hub:**\n"
+    "🚀 **Send Now** - Immediate manual blast.\n"
+    "📅 **Schedule** - Set auto-send time.\n"
+    "⏸️ **Pause** - Stops all active tasks.\n\n"
+    "**⚙️ Configuration:**\n"
+    "📱 **Add Acc** - Link Telegram sessions.\n"
+    "📂 **Add List** - Import @usernames.\n"
+    "📝 **Edit Msg** - Update promo text.\n\n"
+    "**📊 Information:**\n"
+    "📈 **Status** - Audit and account health."
+)
