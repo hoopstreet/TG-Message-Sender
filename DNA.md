@@ -1,10 +1,10 @@
 # 🧬 Tacloban HQ DNA: Project Evolution
-**Current Version:** v3.2.3
-**Codename:** Weightless Commander (OPERATIONAL)
+**Current Version:** v3.3.0
+**Codename:** Weightless Commander (UI MASTER)
 
 ### 🛠️ Version Summary
-- **v3.2.3:** Activated functional /add_list and /edit_msg mapping to Supabase.
-- **v3.2.2:** Fixed send.py logic truncation.
+- **v3.3.0:** Professional BotFather-style manual injected into /start.
+- **v3.2.3:** Functional Ingestion active.
 
 ### 🚀 Technical Stack
 - **Northflank / DockerHub / Supabase / iSH**
