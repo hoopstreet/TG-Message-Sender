@@ -1,50 +1,48 @@
-import asyncio, pytz, glob
-from datetime import datetime
 from telethon import TelegramClient, events, Button
+import asyncio
 
-# --- THE UNIVERSAL ROUTER ---
+# --- 1. DEFINE TRIGGER LOGIC (The "Functions") ---
+async def trigger_send_now(event):
+    global IS_SENDING
+    IS_SENDING = True
+    await event.respond("🚀 **Manual Blast Started.**")
+    await shared_outreach_logic(event, "Manual")
+
+async def trigger_status(event):
+    report = await get_stats_report()
+    await event.respond(report)
+
+async def trigger_add_list(event):
+    USER_STATE[event.sender_id] = "waiting_list"
+    await event.respond("📂 **Send @usernames (one per line):**")
+
+# --- 2. COMMAND ROUTER (Handles Slash Commands /menu) ---
 @bot.on(events.NewMessage(from_users=ADMIN_ID))
-async def universal_handler(event):
+async def router(event):
     if not event.text: return
-    
-    # 1. Clean the command (e.g., /send_now -> send_now)
-    cmd = event.text.split()[0].lower().replace('/', '')
+    cmd = event.text.split()[0].lower()
 
-    # 2. Map Slash Commands to Internal Logic
-    if cmd == 'start':
-        await event.respond(GUIDE, buttons=[
-            [Button.inline("🚀 Send Now", data="run_now"), Button.inline("📅 Schedule", data="set_sched")],
-            [Button.inline("⏸️ Pause Send", data="stop"), Button.inline("⏸️ Pause Sched", data="stop_sched")],
-            [Button.inline("📂 Add List", data="add_users"), Button.inline("📝 Edit Msg", data="edit_msg")],
-            [Button.inline("📱 Add Acc", data="add_acc"), Button.inline("📊 Status", data="get_status")]
-        ])
-    
-    elif cmd in ['status', 'get_status']:
-        await event.respond(await get_stats_report())
-        
-    elif cmd in ['send_now', 'run_now']:
-        asyncio.create_task(shared_outreach_logic(event, "Manual Blast"))
-        
-    elif cmd in ['add_account', 'add_acc']:
-        USER_STATE[event.sender_id] = "waiting_phone"
-        await event.respond("📱 **Enter phone number (+63...):**")
-        
-    elif cmd in ['edit_msg']:
+    # Map Slash Commands to Functions
+    if cmd == '/start': await start(event)
+    elif cmd == '/send_now': await trigger_send_now(event)
+    elif cmd == '/status': await trigger_status(event)
+    elif cmd == '/add_list': await trigger_add_list(event)
+    elif cmd == '/edit_msg': 
         USER_STATE[event.sender_id] = "waiting_msg"
-        await event.respond("📝 **Send the new promotional text:**")
-        
-    elif cmd in ['add_list', 'add_users']:
-        USER_STATE[event.sender_id] = "waiting_list"
-        await event.respond("📂 **Paste your @username list:**")
-
-    elif cmd in ['pause_send', 'pause_sched', 'stop', 'stop_sched']:
+        await event.respond("📝 Send new promo text:")
+    elif cmd == '/add_account':
+        USER_STATE[event.sender_id] = "waiting_phone"
+        await event.respond("📱 Enter Phone (+63...):")
+    elif cmd in ['/pause_send', '/pause_sched']:
         global IS_SENDING
         IS_SENDING = False
-        await event.respond("⏸️ **All Outreach Paused.**")
+        await event.respond("⏸️ **Stopped.**")
 
-# --- CALLBACK HANDLER (For Button Taps) ---
+# --- 3. CALLBACK ROUTER (Handles Buttons) ---
 @bot.on(events.CallbackQuery)
 async def callback_handler(event):
-    # This just redirects button clicks to the same handler above
-    event.text = f"/{event.data.decode('utf-8')}"
-    await universal_handler(event)
+    data = event.data
+    if data == b"run_now": await trigger_send_now(event)
+    elif data == b"get_status": await trigger_status(event)
+    elif data == b"add_users": await trigger_add_list(event)
+    # ... Add other button mappings here
