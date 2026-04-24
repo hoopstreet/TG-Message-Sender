@@ -182,3 +182,42 @@ async def stop_sched(event):
     global SCHEDULER_ACTIVE
     SCHEDULER_ACTIVE = False
     await event.respond("⏸️ **Scheduled tasks suspended.**")
+
+async def get_account_stats():
+    res = supabase.table("message_campaign").select("sender_phone, status").execute()
+    stats = {}
+    for row in res.data:
+        phone = row.get('sender_phone', 'Unknown')
+        if phone not in stats: stats[phone] = 0
+        if row['status'] == 'success': stats[phone] += 1
+    return stats
+
+@bot.on(events.NewMessage(pattern='/status'))
+async def status_deep_audit_v2(event):
+    data = supabase.table("message_campaign").select("*").execute().data
+    acc_stats = await get_account_stats()
+    sessions = glob.glob("*.session")
+    
+    # Formatting the Account List
+    acc_report = "\n".join([f"📱 {phone}: {count} sends" for phone, count in acc_stats.items()])
+    
+    report = (
+        "👑 **Tacloban HQ: COMMAND STATUS**\n"
+        "--------------------------\n"
+        f"📈 **Total Leads:** {len(data)}\n"
+        f"✅ **Sent:** {sum(1 for x in data if x['status'] == 'success')}\n"
+        f"❌ **Failed:** {sum(1 for x in data if x['status'] == 'failed')}\n"
+        "--------------------------\n"
+        "**Per Account Performance:**\n"
+        f"{acc_report}\n"
+        "--------------------------\n"
+        f"📱 **Active Sessions:** {len(sessions)}\n"
+        "Engine: **Ready**"
+    )
+    await event.respond(report)
+
+@bot.on(events.NewMessage(pattern='/cleanup'))
+async def cleanup_list(event):
+    # Remove failed or missing leads to keep the pending list "tight"
+    supabase.table("message_campaign").delete().eq("status", "failed").execute()
+    await event.respond("🧹 **List Organized.** Failed/Invalid entries removed from queue.")
