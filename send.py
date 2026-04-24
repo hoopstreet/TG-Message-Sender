@@ -35,7 +35,7 @@ async def global_worker():
                     supabase.table("message_campaign").update({"status": "success", "sent_by": s_name, "updated_at": datetime.now(PHT).isoformat()}).eq("id", lead['id']).execute()
                     await asyncio.sleep(random.randint(300, 900))
         except: await asyncio.sleep(60)
-        await asyncio.sleep(1800)
+        await asyncio.sleep(60)
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
