@@ -25,37 +25,18 @@ async def add_acc(event):
         phone = (await conv.get_response()).text.strip()
         client = TelegramClient(phone, API_ID, API_HASH)
         await client.connect()
-        
-        # Fixing OTP Trigger logic
         try:
             sent_code = await client.send_code_request(phone)
             await conv.send_message("📩 **Step 2: Enter the OTP code received:**")
             otp = (await conv.get_response()).text.strip()
-            await client.sign_in(phone, otp, hash=sent_code.phone_code_hash)
+            await client.sign_in(phone, otp, phone_code_hash=sent_code.phone_code_hash)
         except errors.SessionPasswordNeededError:
             await conv.send_message("🔐 **Step 3: Enter 2FA PIN:**")
             await client.sign_in(password=(await conv.get_response()).text.strip())
         except Exception as e:
-            await conv.send_message(f"❌ Error: {e}")
-            return
-
+            await conv.send_message(f"❌ Error: {e}"); return
         await conv.send_message(f"✅ Success! {phone} is now linked to the HQ.")
         await client.disconnect()
-
-@bot.on(events.NewMessage(pattern='/schedule'))
-async def schedule(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📅 **Target Date & Time?**\nExample: `2026-04-25 14:00` (PHT)")
-        target = (await conv.get_response()).text.strip()
-        
-        # WRITING TO SUPABASE: Adding a placeholder row with the scheduled time
-        supabase.table("message_campaign").insert({
-            "username": "SCHEDULE_MARKER", 
-            "status": "scheduled", 
-            "created_at": target 
-        }).execute()
-        
-        await conv.send_message(f"📅 **Scheduler Sync Active.** Deployment set for `{target}`")
 
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
@@ -65,16 +46,7 @@ async def status(event):
     sent = sum(1 for x in res if x['status'] == 'success')
     fail = sum(1 for x in res if x['status'] == 'failed')
     pend = sum(1 for x in res if x['status'] == 'pending')
-    
-    report = (
-        "📊 **Tacloban HQ: Deep Audit**\n"
-        f"👥 Total Leads: {total}\n"
-        f"✅ Sent: {sent} | ❌ Failed: {fail}\n"
-        f"⏳ Pending: {pend}\n\n"
-        f"📱 Active Sessions: {len(sessions)}\n"
-        "--------------------------\n"
-        "Engine: **Ready** | Sync: **Real-time**"
-    )
+    report = (f"📊 **Tacloban HQ: Deep Audit**\n👥 Total Leads: {total}\n✅ Sent: {sent} | ❌ Failed: {fail}\n⏳ Pending: {pend}\n\n📱 Active Sessions: {len(sessions)}\n--------------------------\nEngine: Ready | Sync: Real-time")
     await event.respond(report)
 
 @bot.on(events.NewMessage(pattern='/add_list'))
@@ -98,8 +70,7 @@ async def edit_msg(event):
 
 @bot.on(events.NewMessage(pattern='/send_now'))
 async def blast(event):
-    global SENDING_ACTIVE
-    SENDING_ACTIVE = True
+    global SENDING_ACTIVE; SENDING_ACTIVE = True
     await event.respond("🚀 **Blast Starting...** (Includes Auto-Organize)")
     supabase.table("message_campaign").delete().eq("status", "failed").execute()
     leads = supabase.table("message_campaign").select("*").eq("status", "pending").execute().data
@@ -112,19 +83,24 @@ async def blast(event):
                 await client.send_message(lead['username'], lead.get('edit_msg', "Check this out!"))
                 supabase.table("message_campaign").update({"status": "success", "sender_phone": s_name}).eq("id", lead['id']).execute()
             await asyncio.sleep(random.randint(60, 120))
-        except:
-            supabase.table("message_campaign").update({"status": "failed"}).eq("id", lead['id']).execute()
+        except: supabase.table("message_campaign").update({"status": "failed"}).eq("id", lead['id']).execute()
+
+@bot.on(events.NewMessage(pattern='/schedule'))
+async def schedule(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Target Date & Time?**\nExample: `2026-04-25 14:00` (PHT)")
+        target = (await conv.get_response()).text.strip()
+        supabase.table("message_campaign").insert({"username": "SCHEDULE_MARKER", "status": "scheduled", "created_at": target}).execute()
+        await conv.send_message(f"📅 **Scheduler Sync Active.** Deployment set for `{target}`")
 
 @bot.on(events.NewMessage(pattern='/pause_send'))
 async def stop_manual(event):
-    global SENDING_ACTIVE
-    SENDING_ACTIVE = False
+    global SENDING_ACTIVE; SENDING_ACTIVE = False
     await event.respond("⏸️ **Manual Engine Halted.**")
 
 @bot.on(events.NewMessage(pattern='/pause_sched'))
 async def p_sched(event):
-    global SCHED_ACTIVE
-    SCHED_ACTIVE = not SCHED_ACTIVE
+    global SCHED_ACTIVE; SCHED_ACTIVE = not SCHED_ACTIVE
     await event.respond(f"📅 **Scheduler {'RESUMED' if SCHED_ACTIVE else 'PAUSED'}.**")
 
 async def main(): await bot.run_until_disconnected()
