@@ -45,3 +45,31 @@ async def handler(event):
 
 print("✅ Tacloban HQ v2.3.4 - Docker-Ready & Injected.")
 bot.run_until_disconnected()
+
+# --- LEAD INGESTION LOGIC ---
+@bot.on(events.CallbackQuery(data=b"add_users"))
+async def add_users_handler(event):
+    USER_STATE[event.sender_id] = "waiting_list"
+    await event.respond("📂 **Send me the list of @usernames (one per line or comma-separated):**")
+
+@bot.on(events.NewMessage(from_users=ADMIN_ID))
+async def list_input_handler(event):
+    state = USER_STATE.get(event.sender_id)
+    if state == "waiting_list" and not event.text.startswith('/'):
+        # Clean the input: split by newline or comma, remove @ and spaces
+        raw_list = event.text.replace(',', '\n').split('\n')
+        cleaned_usernames = [u.strip().replace('@', '') for u in raw_list if u.strip()]
+        
+        if not cleaned_usernames:
+            await event.respond("❌ No valid usernames found.")
+            return
+
+        # Prepare data for Supabase
+        data_to_insert = [{"username": u, "status": "pending"} for u in cleaned_usernames]
+        
+        try:
+            supabase.table("targets").insert(data_to_insert).execute()
+            await event.respond(f"✅ **Success!** Added {len(cleaned_usernames)} leads to the queue.")
+            USER_STATE.pop(event.sender_id)
+        except Exception as e:
+            await event.respond(f"❌ DB Error: {str(e)[:50]}")
