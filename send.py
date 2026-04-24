@@ -224,3 +224,12 @@ async def menu_command_handler(event):
         await event.respond("⏸️ **Operations Paused.**")
     elif cmd == '/schedule':
         await event.respond("📅 **Scheduling feature is coming in the next update!**")
+
+# --- STABILITY PATCH (v2.4.4) ---
+async def safe_db_update(target_id, update_data):
+    try:
+        supabase.table("targets").update(update_data).eq("id", target_id).execute()
+    except Exception as e:
+        print(f"⚠️ DB Column Sync Issue: {e}")
+        # Fallback: try updating only status if extended columns fail
+        supabase.table("targets").update({"status": update_data["status"]}).eq("id", target_id).execute()
