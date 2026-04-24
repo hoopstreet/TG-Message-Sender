@@ -18,7 +18,7 @@ async def global_worker():
         try:
             sets = supabase.table("bot_settings").select("*").eq("id", "production").single().execute().data
             if not sets['is_sending_active'] and not sets['is_sched_active']:
-                await asyncio.sleep(60); continue
+                await asyncio.sleep(10); continue
             sessions = sorted([f for f in glob.glob("*.session") if "bot.session" not in f])
             for s_file in sessions:
                 s_name = s_file.replace(".session", "")
@@ -34,8 +34,8 @@ async def global_worker():
                     await client.send_message(lead['add_list'], final_msg)
                     supabase.table("message_campaign").update({"status": "success", "sent_by": s_name, "updated_at": datetime.now(PHT).isoformat()}).eq("id", lead['id']).execute()
                     await asyncio.sleep(random.randint(300, 900))
-        except: await asyncio.sleep(60)
-        await asyncio.sleep(60)
+        except: await asyncio.sleep(10)
+        await asyncio.sleep(10)
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
@@ -100,6 +100,7 @@ async def edit_msg(event):
         await event.respond("✅ Script updated.")
 
 if __name__ == '__main__':
+    print('🚀 Sentinel Bot is Online and Listening...')
     loop = asyncio.get_event_loop()
     loop.create_task(global_worker())
     bot.run_until_disconnected()
