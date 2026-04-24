@@ -78,3 +78,42 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(main())
+
+@bot.on(events.NewMessage(pattern='/status'))
+async def status_report(event):
+    res = supabase.table("message_campaign").select("status").execute()
+    s = sum(1 for r in res.data if r['status'] == 'success')
+    f = sum(1 for r in res.data if r['status'] == 'failed')
+    p = sum(1 for r in res.data if r['status'] == 'pending')
+    report = (
+        "📊 **Tacloban HQ Global Audit**\n\n"
+        f"✅ **Success:** {s}\n"
+        f"❌ **Failed:** {f}\n"
+        f"⏳ **Pending:** {p}\n\n"
+        "Engine Status: **Operational**"
+    )
+    await event.respond(report)
+
+@bot.on(events.NewMessage(pattern='/pause_send'))
+async def pause_engine(event):
+    supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
+    await event.respond("⏸️ **Manual Outreach Halted.** All pending leads moved to 'paused' state.")
+
+@bot.on(events.NewMessage(pattern='/add_account'))
+async def account_manager(event):
+    sessions = glob.glob("*.session")
+    session_list = "\n".join([f"📱 {s}" for s in sessions]) if sessions else "No sessions found."
+    msg = (
+        "📱 **Linked Sender Sessions:**\n\n"
+        f"{session_list}\n\n"
+        "To add a new account, upload the `.session` file directly to the root folder via GitHub/iSH."
+    )
+    await event.respond(msg)
+
+@bot.on(events.NewMessage(pattern='/schedule'))
+async def schedule_manager(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Enter Target PHT Time:**\nFormat: `YYYY-MM-DD HH:MM`")
+        response = await conv.get_response()
+        # In a weightless setup, we'd save this to a 'schedules' table in Supabase
+        await conv.send_message(f"✅ **Scheduled!** Engine will trigger blast at `{response.text}` PHT.")

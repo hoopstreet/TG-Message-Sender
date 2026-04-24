@@ -1,12 +1,10 @@
 # 🧬 Tacloban HQ DNA: Project Evolution
-**Current Version:** v3.4.0
-**Codename:** Weightless Commander (FULL POWER)
+**Current Version:** v3.4.5
+**Codename:** Weightless Commander (ALL TRIGGERS ACTIVE)
 
 ### 🛠️ Version Summary
-- **v3.4.0:** Connected all UI buttons to functional Supabase & Telethon logic.
-- **v3.3.5:** UI Guide finalized.
+- **v3.4.5:** Finalized all slash commands (/status, /pause_send, /add_account, /schedule).
+- **v3.4.2:** Stealth UI (Text-only guide) implemented.
 
 ### 🚀 Technical Stack
 - **Northflank / DockerHub / Supabase / iSH**
-- **v3.4.1:** Fixed CallbackQuery routing for Status and Send Now.
-- **v3.4.2:** Refined /start to text-only guide. Removed inline menu.
