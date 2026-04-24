@@ -16,3 +16,4 @@
 - All triggers confirmed mapping to `public.message_campaign`.
 - Dual-Pause logic verified: `status` (manual) | `pause_sched` (auto).
 - Latest push triggered at: 2026-04-24 PHT.
+## ✅ v2.8.0 Mapping Verified: Outreach Engine connected to 'status' and 'send_now' columns.

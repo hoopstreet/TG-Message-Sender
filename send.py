@@ -89,3 +89,28 @@ async def add_account_handler(event):
         await event.respond("⚠️ No .session files found in root. Upload them via iSH first.")
     else:
         await event.respond(f"📱 **Active Sessions:**\n" + "\n".join(active_sessions))
+async def run_blast(row):
+    sessions = [s for s in glob.glob("*.session") if "bot" not in s]
+    if not sessions: return
+    
+    # Select random session for rotation
+    session_file = random.choice(sessions).replace('.session', '')
+    try:
+        async with TelegramClient(session_file, int(os.getenv("TELEGRAM_API_ID")), os.getenv("TELEGRAM_API_HASH")) as client:
+            await client.send_message(row['username'], row['edit_msg'])
+            # 1:1 Map Update
+            supabase.table("message_campaign").update({
+                "status": "success",
+                "send_now": session_file,
+                "updated_at": datetime.now(PHT).isoformat()
+            }).eq("id", row['id']).execute()
+    except Exception as e:
+        supabase.table("message_campaign").update({"status": "failed"}).eq("id", row['id']).execute()
+
+@bot.on(events.CallbackQuery(data="schedule"))
+async def schedule_handler(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📅 **Enter PHT Time (YYYY-MM-DD HH:MM):**")
+        response = await conv.get_response()
+        supabase.table("message_campaign").update({"schedule": response.text}).eq("status", "pending").execute()
+        await conv.send_message(f"✅ Leads scheduled for {response.text} PHT.")
