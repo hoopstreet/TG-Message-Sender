@@ -176,3 +176,23 @@ async def run_outreach(event):
     IS_SENDING = False
 
 print("🔥 Tacloban HQ v2.4.0 FULLY LOADED.")
+
+# --- COMMAND MENU HANDLER ---
+@bot.on(events.NewMessage(from_users=ADMIN_ID))
+async def menu_command_handler(event):
+    cmd = event.text.split()[0].lower() if event.text else ""
+    
+    if cmd == '/status':
+        await event.respond(await get_stats_report())
+    elif cmd == '/send_now':
+        await run_outreach(event)
+    elif cmd == '/add_list':
+        await add_users_handler(event)
+    elif cmd == '/edit_msg':
+        await edit_msg_init(event)
+    elif cmd == '/add_account':
+        await add_acc_init(event)
+    elif cmd == '/pause_send':
+        global IS_SENDING
+        IS_SENDING = False
+        await event.respond("🛑 **Sending Paused.**")
