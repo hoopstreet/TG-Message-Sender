@@ -1,6 +1,6 @@
 import os, asyncio, random, glob, pytz, logging, re, base64
 from datetime import datetime
-from telethon import TelegramClient, events, errors, functions, types
+from telethon import TelegramClient, events, errors
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -50,7 +50,7 @@ async def global_worker():
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("👑 **Sentinel Elite v5.9.0**\n/status | /add_list | /add_account | /pause")
+    await event.respond("👑 **Sentinel v5.9.1**\n/status | /add_list | /add_account\n/edit_msg | /resume | /pause")
 
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
@@ -59,18 +59,36 @@ async def status(event):
         leads = supabase.table("message_campaign").select("status").execute().data
         pending = sum(1 for x in leads if x['status'] == 'pending')
         accs = len(glob.glob("*.session")) - 1
-        await event.respond(f"📊 **Audit**\nPending: {pending}\nAccounts: {accs}\nEngine: {'RUNNING' if sets['is_sending_active'] else 'PAUSED'}")
+        await event.respond(f"📊 **Audit**\nPending: {pending}\nAccounts: {accs}\nEngine: {'RUNNING' if sets['is_sending_active'] else 'PAUSED'}\n\n📝 **Msg:** {sets['current_promo_text'][:50]}...")
     except Exception as e: await event.respond(f"❌ Status Error: {e}")
 
 @bot.on(events.NewMessage(pattern='/add_list'))
 async def add_list(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Paste Leads (@usernames or links):**")
+        await conv.send_message("📂 **Paste Leads:**")
         r = await conv.get_response()
-        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', r.text)))
-        new_leads = [{"add_list": u, "status": "pending"} for u in found if len(u) > 4]
+        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{4,32})', r.text)))
+        new_leads = [{"add_list": u, "status": "pending"} for u in found]
         if new_leads: supabase.table("message_campaign").upsert(new_leads).execute()
-        await event.respond(f"✅ Processed {len(found)} leads.")
+        await event.respond(f"✅ Processed {len(new_leads)} leads.")
+
+@bot.on(events.NewMessage(pattern='/edit_msg'))
+async def edit_msg(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📝 **Enter New Promo Text:**\n(Use 'Hi,' at the start)")
+        new_text = (await conv.get_response()).text
+        supabase.table("bot_settings").update({"current_promo_text": new_text}).eq("id", "production").execute()
+        await event.respond("✅ Promo text updated.")
+
+@bot.on(events.NewMessage(pattern='/resume'))
+async def resume(event):
+    supabase.table("bot_settings").update({"is_sending_active": True}).eq("id", "production").execute()
+    await event.respond("🚀 **Sending Engine Started.**")
+
+@bot.on(events.NewMessage(pattern='/pause'))
+async def pause(event):
+    supabase.table("bot_settings").update({"is_sending_active": False}).eq("id", "production").execute()
+    await event.respond("⏸️ **All cycles halted.**")
 
 @bot.on(events.NewMessage(pattern='/add_account'))
 async def add_account(event):
@@ -83,8 +101,11 @@ async def add_account(event):
         try:
             await client.send_code_request(phone)
             await conv.send_message("📩 **OTP:**")
-            code = (await conv.get_response()).text
-            await client.sign_in(phone, code)
+            code_msg = await conv.get_response()
+            if code_msg.text.startswith('/'):
+                await event.respond("❌ Aborted. You sent a command instead of OTP.")
+                return
+            await client.sign_in(phone, code_msg.text)
             with open(f"{s_name}.session", "rb") as f:
                 encoded = base64.b64encode(f.read()).decode('utf-8')
                 supabase.table("saved_sessions").upsert({"phone_number": s_name, "session_data": encoded}).execute()
