@@ -1,3 +1,20 @@
+## [v5.4.0] Sentinel "Warm-Engine" Protocol - 2026-04-24 20:10 PHT
+- **Account Safety:** Standby "Warm" sessions (No logouts).
+- **Gatling Filter:** Auto-strips t.me/ and @ from inputs.
+- **Verification:** Blocks Bots, Inactive (>7d), and Deleted users.
+- **Routing:** Continuous switching across 5-msg daily limit.
+
+---
+## [v5.4.0] Sentinel "Warm-Engine" Protocol - 2026-04-24 20:10 PHT
+- **Account Safety:** Removed "Log out" on limit. Accounts now stay "Warm" in standby.
+- **Deep Filter:** /add_list now strips URLs/mentions and blocks:
+  - Already existing leads (De-duplication).
+  - Telegram Bots.
+  - Users inactive for > 7 days.
+  - Deleted or invalid accounts.
+- **Routing:** Continuous account-switching until all hit the 5-msg daily limit.
+
+---
 ## [v5.3.1] Sentinel Final Polish - 2026-04-24
 - **Handlers:** Completed /edit_msg, /add_account, and /start guide.
 - **UI:** Enhanced Telegram bot response formatting for mobile readability.
