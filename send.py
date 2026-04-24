@@ -9,79 +9,52 @@ PHT = pytz.timezone('Asia/Manila')
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 bot = TelegramClient('bot', int(os.getenv("TELEGRAM_API_ID")), os.getenv("TELEGRAM_API_HASH")).start(bot_token=os.getenv("CONTROL_BOT_TOKEN"))
 
+# --- 1. UI: BotFather Style Manual ---
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("👑 **Tacloban HQ: Weightless Commander**", buttons=[
-        [Button.inline("🚀 Send Now", data="send_now"), Button.inline("📅 Schedule", data="schedule")],
-        [Button.inline("📊 Status", data="status"), Button.inline("📂 Add List", data="add_list")],
-        [Button.inline("📝 Edit Msg", data="edit_msg"), Button.inline("📱 Add Acc", data="add_account")],
-        [Button.inline("⏸️ Pause Send", data="pause_send"), Button.inline("⏸️ Pause Sched", data="pause_sched")]
-    ])
-
-@bot.on(events.CallbackQuery)
-async def master_router(event):
-    data = event.data.decode('utf-8')
-    # 1:1 Mapping Logic
-    if data == "status":
-        res = supabase.table("message_campaign").select("status").execute()
-        s, f, p = sum(1 for r in res.data if r['status'] == 'success'), sum(1 for r in res.data if r['status'] == 'failed'), sum(1 for r in res.data if r['status'] == 'pending')
-        await event.respond(f"📊 **Audit:** ✅{s} | ❌{f} | ⏳{p}")
-    
-    elif data == "pause_send":
-        supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
-        await event.respond("⏸️ Manual Outreach Paused.")
-
-    elif data == "pause_sched":
-        supabase.table("message_campaign").update({"pause_sched": True}).execute()
-        await event.respond("⏸️ Scheduler Paused.")
-
-@bot.on(events.CallbackQuery(data="add_list"))
-async def add_list(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 Send @usernames:")
-        msg = await conv.get_response()
-        for n in msg.text.split('\n'):
-            if n.strip(): supabase.table("message_campaign").upsert({"username": n.strip(), "status": "pending"}).execute()
-        await conv.send_message("✅ Leads Added.")
-
-# --- v3.0.0 Background Service Bridge ---
-async def main():
-    print("🚀 Tacloban HQ Engine Starting...")
-    # Start the scheduler loop in the background
-    asyncio.create_task(scheduler_loop())
-    # Keep the bot running
-    await bot.run_until_disconnected()
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-@bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    guide_text = (
-        "I can help you create and manage your Outreach Campaigns. "
-        "If you're new to the system, please see the DNA.md manual.\n\n"
-        "**You can control me by sending these commands:**\n\n"
-        "**🚀 Campaigns**\n"
-        "/send_now - execute manual blast\n"
-        "/schedule - set PHT execution time\n"
-        "/status - get campaign audit report\n\n"
-        "**📂 Data Management**\n"
-        "/add_list - import @usernames bulk\n"
-        "/edit_msg - change the promo script\n\n"
-        "**📱 Account & Settings**\n"
-        "/add_account - view/assign session files\n"
-        "/pause_send - kill manual outreach loop\n"
-        "/pause_sched - toggle scheduler state\n\n"
-        "**Web Apps**\n"
-        "/supabase - get direct database link\n"
-        "/northflank - check server logs"
+    guide = (
+        "I can help you manage your Outreach Campaigns.\n\n"
+        "**🚀 Campaigns**\n/send_now | /schedule | /status\n\n"
+        "**📂 Data**\n/add_list | /edit_msg\n\n"
+        "**📱 Settings**\n/add_account | /pause_send | /pause_sched"
     )
-    
     buttons = [
         [Button.inline("🚀 Send Now", data="send_now"), Button.inline("📅 Schedule", data="schedule")],
         [Button.inline("📊 Status", data="status"), Button.inline("📂 Add List", data="add_list")],
         [Button.inline("📝 Edit Msg", data="edit_msg"), Button.inline("📱 Add Acc", data="add_account")],
         [Button.inline("⏸️ Pause Send", data="pause_send"), Button.inline("⏸️ Pause Sched", data="pause_sched")]
     ]
-    
-    await event.respond(guide_text, buttons=buttons)
+    await event.respond(guide, buttons=buttons)
+
+# --- 2. Router: Callback Handlers ---
+@bot.on(events.CallbackQuery)
+async def master_router(event):
+    data = event.data.decode('utf-8')
+    if data == "status":
+        res = supabase.table("message_campaign").select("status").execute()
+        s = sum(1 for r in res.data if r['status'] == 'success')
+        await event.respond(f"📊 **Audit:** {s} Successes.")
+    elif data == "pause_send":
+        supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
+        await event.respond("⏸️ Manual Outreach Paused.")
+
+# --- 3. Engine: Outreach & Scheduler ---
+async def scheduler_loop():
+    while True:
+        now_pht = datetime.now(PHT).strftime('%Y-%m-%d %H:%M')
+        res = supabase.table("message_campaign").select("*").eq("schedule", now_pht).eq("pause_sched", False).execute()
+        for task in res.data: asyncio.create_task(run_blast(task))
+        await asyncio.sleep(60)
+
+async def run_blast(row):
+    # Outreach logic placeholder
+    pass
+
+# --- 4. Bridge: Execution ---
+async def main():
+    print("🚀 Tacloban HQ v3.2.0 Active")
+    asyncio.create_task(scheduler_loop())
+    await bot.run_until_disconnected()
+
+if __name__ == '__main__':
+    asyncio.get_event_loop().run_until_complete(main())
