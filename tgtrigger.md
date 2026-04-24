@@ -1,0 +1,13 @@
+# 👑 Tacloban HQ v2.3.0: Command Center Trigger Mapping
+
+| Telegram Command | Supabase Column Name | Data Type | Purpose / Action |
+| :--- | :--- | :--- | :--- |
+| /start | (N/A) | (N/A) | Welcome Menu |
+| /send_now | send_now | TEXT | Manual Blast Session |
+| /schedule | schedule | TEXT | PHT Time (YYYY-MM-DD HH:MM) |
+| /pause_send | status | TEXT | Manual Loop Kill-switch |
+| /pause_sched | pause_sched | BOOLEAN | Auto-Task Kill-switch |
+| /add_list | username | TEXT | Unique Lead Handle |
+| /edit_msg | edit_msg | TEXT | Promo Script Content |
+| /add_account | add_account | TEXT | Session Assignment |
+| /status | updated_at | TIMESTAMPTZ | PHT Completion Audit |
