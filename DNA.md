@@ -1,6 +1,4 @@
-## [v4.8.0] Weightless Commander
-- **Primary Table:** `message_campaign`
-- **Usernames:** Column `add_list`
-- **Promo Script:** Column `edit_msg` (synced via `bot_settings`)
-- **Automation:** 24h Quarantine + Seniority Rotation logic.
-- **Triggers:** All mapped to interactive bot handlers.
+## [v4.8.5] Sentinel Filter Protocol
+- **Validation:** 7-day Activity Check via GetFullUserRequest.
+- **Input:** Supports @username, t.me/links, and plain text.
+- **Filters:** Auto-skips Bots, Deleted Accounts, and Duplicates in Supabase.
