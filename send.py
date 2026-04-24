@@ -1,3 +1,4 @@
+print("🚀 BOT IS ATTEMPTING TO START...")
 import os, asyncio, random, glob, pytz, logging, re, base64
 from datetime import datetime
 from telethon import TelegramClient, events, functions, types, errors
