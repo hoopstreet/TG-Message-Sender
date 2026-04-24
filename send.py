@@ -44,18 +44,30 @@ async def background_worker(event):
             supabase.table("targets").update({"status": "failed"}).eq("id", lead['id']).execute()
         await asyncio.sleep(random.randint(60, 120))
     supabase.table("bot_settings").update({"is_sending_active": False}).eq("id", "production").execute()
-    if event: await event.respond("🏁 **Sequence Finished.**")
+    if event: await event.respond("🏁 **Blast Sequence Completed.**")
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
-    await event.respond("👑 **Tacloban HQ: Weightless Commander**\n\n/start - 👑 Guide\n/send_now - 🚀 Blast\n/schedule - 📅 Schedule\n/status - 📊 Stats\n/pause_send - ⏸️ Stop Send\n/pause_sched - ⏸️ Stop Sched")
+    menu = (
+        "👑 **Tacloban HQ: Weightless Commander**\n\n"
+        "/start - 👑 Open Command Center Guide\n"
+        "/send_now - 🚀 Trigger Immediate Manual Blast\n"
+        "/schedule - 📅 Set Date/Time for Auto-Send\n"
+        "/pause_send - ⏸️ Stop Active Manual Sending\n"
+        "/pause_sched - ⏸️ Stop Active Scheduled Tasks\n"
+        "/add_list - 📂 Import New @Username List\n"
+        "/edit_msg - 📝 Update Promotional Text\n"
+        "/add_account - 📱 Link New Sender Session\n"
+        "/status - 📊 View Global Audit & Stats"
+    )
+    await event.respond(menu)
 
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
     hq = get_hq()
     res = supabase.table("targets").select("status").execute().data
     sessions = glob.glob("*.session")
-    report = (f"📊 **HQ Audit**\n👥 Leads: {len(res)} | ⏳ Pend: {sum(1 for x in res if x['status'] == 'pending')}\n📱 Sessions: {len(sessions)}\nEngine: {'🚀 BLASTING' if hq['is_sending_active'] else 'Ready'}\nSched: {'✅ ON' if hq['is_sched_active'] else '⏸️ OFF'}")
+    report = (f"📊 **Global Audit**\n👥 Leads: {len(res)} | ⏳ Pend: {sum(1 for x in res if x['status'] == 'pending')}\n📱 Sessions: {len(sessions)}\nEngine: {'🚀 BLASTING' if hq['is_sending_active'] else 'Ready'}\nSched: {'✅ ON' if hq['is_sched_active'] else '⏸️ OFF'}")
     await event.respond(report)
 
 @bot.on(events.NewMessage(pattern='/send_now'))
@@ -67,56 +79,56 @@ async def blast(event):
 @bot.on(events.NewMessage(pattern='/pause_send'))
 async def stop(event):
     supabase.table("bot_settings").update({"is_sending_active": False}).eq("id", "production").execute()
-    await event.respond("⏸️ **Engine Halted.**")
+    await event.respond("⏸️ **Manual Sending Halted.**")
 
 @bot.on(events.NewMessage(pattern='/pause_sched'))
 async def p_sched(event):
     hq = get_hq()
     new_state = not hq['is_sched_active']
     supabase.table("bot_settings").update({"is_sched_active": new_state}).eq("id", "production").execute()
-    await event.respond(f"📅 **Scheduler {'RESUMED' if new_state else 'PAUSED'}.**")
+    await event.respond(f"📅 **Scheduled Tasks {'RESUMED' if new_state else 'PAUSED'}.**")
 
 @bot.on(events.NewMessage(pattern='/schedule'))
 async def schedule(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📅 **PHT Time?** (YYYY-MM-DD HH:MM)")
+        await conv.send_message("📅 **Set Auto-Send Time (PHT)?**\nFormat: `YYYY-MM-DD HH:MM`")
         target = (await conv.get_response()).text.strip()
         supabase.table("schedules").insert({"execute_at": target, "status": "pending"}).execute()
-        await event.respond(f"✅ **Auto-Blast set: {target}**")
+        await event.respond(f"✅ **Auto-Send scheduled for {target}.**")
 
 @bot.on(events.NewMessage(pattern='/add_account'))
 async def add_acc(event):
     async with bot.conversation(event.sender_id, timeout=300) as conv:
-        await conv.send_message("📱 **Phone (+63...):**")
+        await conv.send_message("📱 **Enter Phone (+63...):**")
         phone = (await conv.get_response()).text.strip()
         client = TelegramClient(phone, API_ID, API_HASH)
         await client.connect()
         try:
             sent_code = await client.send_code_request(phone)
-            await conv.send_message("📩 **OTP:**")
+            await conv.send_message("📩 **Enter OTP:**")
             otp = (await conv.get_response()).text.strip()
             await client.sign_in(phone, otp, phone_code_hash=sent_code.phone_code_hash)
-            await conv.send_message(f"✅ Success!")
+            await conv.send_message(f"✅ Sender Session Linked!")
         except Exception as e: await conv.send_message(f"❌ {e}")
         finally: await client.disconnect()
 
 @bot.on(events.NewMessage(pattern='/edit_msg'))
 async def edit_msg(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📝 **Promo Script:**")
+        await conv.send_message("📝 **Paste New Promotional Text:**")
         text = (await conv.get_response()).text
         supabase.table("bot_settings").update({"current_promo_text": text}).eq("id", "production").execute()
-        await event.respond("✅ **Updated.**")
+        await event.respond("✅ **Promo Text Updated.**")
 
 @bot.on(events.NewMessage(pattern='/add_list'))
 async def add_list(event):
     async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Usernames:**")
+        await conv.send_message("📂 **Paste New @Username List:**")
         msg = (await conv.get_response()).text
         found = re.findall(r'(?:@)?([a-zA-Z0-9_]{5,32})', msg)
         new_leads = [{"username": u, "status": "pending"} for u in found]
         if new_leads: supabase.table("targets").insert(new_leads).execute()
-        await conv.send_message(f"✅ Added {len(new_leads)}.")
+        await conv.send_message(f"✅ Imported {len(new_leads)} unique leads.")
 
 async def main():
     asyncio.create_task(scheduler_loop())
