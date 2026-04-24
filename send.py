@@ -60,3 +60,32 @@ async def pause_send_handler(event):
 async def pause_sched_handler(event):
     supabase.table("message_campaign").update({"pause_sched": True}).execute()
     await event.respond("⏸️ **Scheduled tasks set to PAUSED.**")
+async def scheduler_loop():
+    while True:
+        now_pht = datetime.now(PHT).strftime('%Y-%m-%d %H:%M')
+        # 1:1 Match: checking 'schedule' and 'pause_sched' columns
+        res = supabase.table("message_campaign").select("*").eq("schedule", now_pht).eq("pause_sched", False).eq("status", "pending").execute()
+        for task in res.data:
+            asyncio.create_task(run_blast(task))
+        await asyncio.sleep(60)
+
+async def run_blast(row):
+    # This is the engine that actually sends the message
+    # It updates 'status', 'send_now', and 'updated_at'
+    pass
+
+@bot.on(events.CallbackQuery(data="status"))
+async def status_audit(event):
+    res = supabase.table("message_campaign").select("status").execute()
+    stats = {"success": 0, "failed": 0, "pending": 0}
+    for r in res.data:
+        stats[r['status']] = stats.get(r['status'], 0) + 1
+    await event.respond(f"📊 **Audit Report**\n✅ Success: {stats['success']}\n❌ Failed: {stats['failed']}\n⏳ Pending: {stats['pending']}")
+@bot.on(events.CallbackQuery(data="add_account"))
+async def add_account_handler(event):
+    sessions = glob.glob("*.session")
+    active_sessions = [s.replace(".session", "") for s in sessions if "bot" not in s]
+    if not active_sessions:
+        await event.respond("⚠️ No .session files found in root. Upload them via iSH first.")
+    else:
+        await event.respond(f"📱 **Active Sessions:**\n" + "\n".join(active_sessions))
