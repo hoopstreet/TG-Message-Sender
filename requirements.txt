@@ -1,7 +1,4 @@
 telethon
-supabase
 python-dotenv
+supabase
 pytz
-httpx
-pydantic
-websockets
