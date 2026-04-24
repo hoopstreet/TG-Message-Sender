@@ -101,3 +101,39 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.create_task(global_worker())
     bot.run_until_disconnected()
+
+@bot.on(events.NewMessage(pattern='/add_account'))
+async def add_acc(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📱 **Enter Phone Number:**\n(e.g., +639XXXXXXXXX)")
+        phone_raw = (await conv.get_response()).text
+        phone = phone_raw.strip().replace(" ", "")
+        
+        # Create unique session name
+        s_name = f"session_{phone.replace('+', '')}"
+        temp_client = TelegramClient(s_name, API_ID, API_HASH)
+        await temp_client.connect()
+        
+        try:
+            await temp_client.send_code_request(phone)
+            await conv.send_message("📩 **Enter OTP Code:**")
+            code = (await conv.get_response()).text
+            
+            try:
+                await temp_client.sign_in(phone, code)
+            except Exception as e:
+                if "password" in str(e).lower():
+                    await conv.send_message("🔐 **2FA Password Required:**")
+                    pw = (await conv.get_response()).text
+                    await temp_client.sign_in(password=pw)
+                else: raise e
+            
+            await temp_client.disconnect()
+            await event.respond(f"✅ **Success!** Account {phone} is now linked to the Sentinel fleet.")
+        except Exception as e:
+            await event.respond(f"❌ **Error:** {str(e)}")
+
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.create_task(global_worker())
+    bot.run_until_disconnected()

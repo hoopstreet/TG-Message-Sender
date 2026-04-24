@@ -1,3 +1,9 @@
+## [v5.6.0] Weightless Login Protocol - 2026-04-24 20:50 PHT
+- **Interactive Login:** /add_account now handles Phone -> OTP -> 2FA.
+- **Session Persistence:** Automatically saves new `.session` files to the cloud.
+- **UI:** Real-time confirmation for successful iGaming account pairing.
+
+---
 ## [v5.5.0] Sentinel Official Release - 2026-04-24
 - **Deduplication:** Automatic `upsert` logic in Supabase.
 - **Deep Filter:** Blocks bots, deleted users, and >7d inactivity.
