@@ -8,3 +8,4 @@
 
 ### 🚀 Technical Stack
 - **Northflank / DockerHub / Supabase / iSH**
+- **v3.6.0:** Added Ingest deduplication and Advanced Stats tracking.

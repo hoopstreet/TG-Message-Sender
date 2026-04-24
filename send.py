@@ -112,3 +112,21 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(main())
+
+@bot.on(events.NewMessage(pattern='/edit_msg'))
+async def update_script(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📝 **Send New Global Promo Message:**")
+        new_msg = (await conv.get_response()).text
+        # Real-time update for all pending leads
+        supabase.table("message_campaign").update({"edit_msg": new_msg}).eq("status", "pending").execute()
+        await conv.send_message("🔄 **Sync Complete.** All future sends will use this script.")
+
+@bot.on(events.NewMessage(pattern='/add_list'))
+async def add_list_v2(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📂 **Send your list (@, links, or text):**")
+        msg = await conv.get_response()
+        from ingest import clean_and_upsert
+        count = clean_and_upsert(msg.text, os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+        await conv.send_message(f"✅ **Batch Processed.** {count} unique leads added to the queue.")
