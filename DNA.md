@@ -1,3 +1,9 @@
+## [v5.3.1] Sentinel Final Polish - 2026-04-24
+- **Handlers:** Completed /edit_msg, /add_account, and /start guide.
+- **UI:** Enhanced Telegram bot response formatting for mobile readability.
+- **Stability:** Confirmed PHT timezone synchronization for Tacloban operations.
+
+---
 ## [v5.3.0] Sentinel Elite Protocol - 2026-04-24 19:45 PHT
 - **Scheduler:** Implemented Toggle Logic. Clicking /schedule while ON kills active tasks; while OFF starts PHT time-picker.
 - **Safety:** Hard 5-msg limit + multi-account deduplication.
