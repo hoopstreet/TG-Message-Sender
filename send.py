@@ -43,6 +43,23 @@ async def master_router(event):
         s = sum(1 for r in res.data if r['status'] == 'success')
         await event.respond(f"📊 **Audit:** {s} Successes recorded.")
     # Add other mappings here as needed
+@bot.on(events.CallbackQuery(data="add_list"))
+async def add_list_handler(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📂 **Tacloban HQ Ingestion:**\nSend me @usernames (one per line).")
+        response = await conv.get_response()
+        usernames = [u.strip() for u in response.text.split('\n') if u.strip()]
+        for u in usernames:
+            if u: supabase.table("message_campaign").upsert({"username": u, "status": "pending"}).execute()
+        await conv.send_message(f"✅ Successfully imported {len(usernames)} leads.")
+
+@bot.on(events.CallbackQuery(data="edit_msg"))
+async def edit_msg_handler(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📝 **Promo Script Update:**\nSend the new message content:")
+        response = await conv.get_response()
+        supabase.table("message_campaign").update({"edit_msg": response.text}).eq("status", "pending").execute()
+        await conv.send_message("✅ Promo script updated for all pending leads.")
 
 # 4. Background Loops & Execution
 async def scheduler_loop():

@@ -22,3 +22,4 @@
 ## 🏆 v3.0.0 Milestone: Full System integration complete. Service Bridge Active.
 ## ✅ v3.1.0 UI Update: /start menu now matches professional BotFather style.
 ## ✅ v3.2.0 Bugfix: Removed duplicate /start handlers for single-response stability.
+## ✅ v3.2.3 Mapping: Ingestion logic (Add List/Edit Msg) verified and pushed.
