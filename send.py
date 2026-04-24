@@ -1,19 +1,28 @@
-import os, asyncio, random, glob, pytz
+import os, asyncio, random, glob, pytz, logging
 from datetime import datetime
 from telethon import TelegramClient, events, Button
 from dotenv import load_dotenv
 from supabase import create_client
 
+# 1. Setup Logging to see errors in Northflank logs
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 load_dotenv()
-PHT = pytz.timezone('Asia/Manila')
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-bot = TelegramClient('bot', int(os.getenv("TELEGRAM_API_ID")), os.getenv("TELEGRAM_API_HASH")).start(bot_token=os.getenv("CONTROL_BOT_TOKEN"))
 
-# --- 1. UI: BotFather Style Manual ---
+PHT = pytz.timezone('Asia/Manila')
+
+# 2. Safe Initialization
+try:
+    supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+    bot = TelegramClient('bot', int(os.getenv("TELEGRAM_API_ID")), os.getenv("TELEGRAM_API_HASH")).start(bot_token=os.getenv("CONTROL_BOT_TOKEN"))
+    print("✅ Connections Established")
+except Exception as e:
+    print(f"❌ Initialization Error: {e}")
+
+# 3. UI: Command Manual
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     guide = (
-        "I can help you manage your Outreach Campaigns.\n\n"
+        "👑 **Tacloban HQ Command Center**\n\n"
         "**🚀 Campaigns**\n/send_now | /schedule | /status\n\n"
         "**📂 Data**\n/add_list | /edit_msg\n\n"
         "**📱 Settings**\n/add_account | /pause_send | /pause_sched"
@@ -26,33 +35,19 @@ async def start(event):
     ]
     await event.respond(guide, buttons=buttons)
 
-# --- 2. Router: Callback Handlers ---
-@bot.on(events.CallbackQuery)
-async def master_router(event):
-    data = event.data.decode('utf-8')
-    if data == "status":
-        res = supabase.table("message_campaign").select("status").execute()
-        s = sum(1 for r in res.data if r['status'] == 'success')
-        await event.respond(f"📊 **Audit:** {s} Successes.")
-    elif data == "pause_send":
-        supabase.table("message_campaign").update({"status": "paused"}).eq("status", "pending").execute()
-        await event.respond("⏸️ Manual Outreach Paused.")
-
-# --- 3. Engine: Outreach & Scheduler ---
+# 4. Background Loops
 async def scheduler_loop():
     while True:
-        now_pht = datetime.now(PHT).strftime('%Y-%m-%d %H:%M')
-        res = supabase.table("message_campaign").select("*").eq("schedule", now_pht).eq("pause_sched", False).execute()
-        for task in res.data: asyncio.create_task(run_blast(task))
+        try:
+            now_pht = datetime.now(PHT).strftime('%Y-%m-%d %H:%M')
+            # Check Supabase connection during loop
+            supabase.table("message_campaign").select("id").limit(1).execute()
+        except:
+            print("⚠️ Supabase heartbeat failed")
         await asyncio.sleep(60)
 
-async def run_blast(row):
-    # Outreach logic placeholder
-    pass
-
-# --- 4. Bridge: Execution ---
 async def main():
-    print("🚀 Tacloban HQ v3.2.0 Active")
+    print("🚀 Tacloban HQ v3.2.1 Operational")
     asyncio.create_task(scheduler_loop())
     await bot.run_until_disconnected()
 
