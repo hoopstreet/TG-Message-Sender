@@ -18,3 +18,4 @@
 - Latest push triggered at: 2026-04-24 PHT.
 ## ✅ v2.8.0 Mapping Verified: Outreach Engine connected to 'status' and 'send_now' columns.
 ## ✅ v2.8.5 SQL Audit: Updated 'updated_at' trigger for /status command.
+## ✅ v2.9.0 Final Mapping: Verified all callback data matches Supabase schema.
