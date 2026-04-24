@@ -8,3 +8,4 @@
 
 ### 🚀 Technical Stack
 - **Northflank / DockerHub / Supabase / iSH**
+- **v3.4.1:** Fixed CallbackQuery routing for Status and Send Now.
