@@ -196,3 +196,31 @@ async def menu_command_handler(event):
         global IS_SENDING
         IS_SENDING = False
         await event.respond("🛑 **Sending Paused.**")
+
+# --- FINAL COMMAND ALIGNMENT (v2.4.3) ---
+@bot.on(events.NewMessage(from_users=ADMIN_ID))
+async def menu_command_handler(event):
+    if not event.text or not event.text.startswith('/'):
+        return
+
+    cmd = event.text.split()[0].lower()
+    
+    # Mapping the menu from your screenshot
+    if cmd == '/start':
+        await start(event)
+    elif cmd == '/send_now':
+        await run_outreach(event)
+    elif cmd == '/add_list':
+        await add_users_handler(event)
+    elif cmd == '/edit_msg':
+        await edit_msg_init(event)
+    elif cmd == '/add_account':
+        await add_acc_init(event)
+    elif cmd == '/status':
+        await event.respond(await get_stats_report())
+    elif cmd in ['/pause_send', '/pause_sched']:
+        global IS_SENDING
+        IS_SENDING = False
+        await event.respond("⏸️ **Operations Paused.**")
+    elif cmd == '/schedule':
+        await event.respond("📅 **Scheduling feature is coming in the next update!**")
