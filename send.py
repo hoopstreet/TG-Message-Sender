@@ -1,5 +1,5 @@
 import os, asyncio, random, glob, pytz, logging, re
-from datetime import datetime
+from datetime import datetime, timedelta
 from telethon import TelegramClient, events, functions, types
 from dotenv import load_dotenv
 from supabase import create_client
@@ -8,7 +8,6 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 PHT = pytz.timezone('Asia/Manila')
 
-# Credentials
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
@@ -21,8 +20,8 @@ async def global_worker():
     while True:
         sets = get_settings()
         if not sets['is_sending_active'] and not sets['is_sched_active']:
-            await asyncio.sleep(30); continue
-
+            await asyncio.sleep(60); continue
+            
         sessions = sorted([f for f in glob.glob("*.session") if "bot.session" not in f])
         for s_file in sessions:
             s_name = s_file.replace(".session", "")
@@ -48,19 +47,65 @@ async def global_worker():
             except: continue
         await asyncio.sleep(600)
 
-@bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    await event.respond("👑 **Sentinel Elite v5.4.1**\n/status | /add_list | /edit_msg\n/schedule | /add_account | /pause")
-
 @bot.on(events.NewMessage(pattern='/status'))
 async def status(event):
     sets = get_settings()
-    leads = supabase.table("message_campaign").select("status", "updated_at").execute().data
+    leads = supabase.table("message_campaign").select("*").execute().data
     today = datetime.now(PHT).strftime('%Y-%m-%d')
-    daily = sum(1 for x in leads if x['status'] == 'success' and x['updated_at'].startswith(today))
+    daily = sum(1 for x in leads if x['status'] == 'success' and x['updated_at'] and x['updated_at'].startswith(today))
     pending = sum(1 for x in leads if x['status'] == 'pending')
-    msg = f"📊 **Audit**\nList: {len(leads)} | Pend: {pending}\nDaily: {daily} | Accs: {len(glob.glob('*.session'))-1}\nSched: {'ON' if sets['is_sched_active'] else 'OFF'}"
+    sched = next((x['updated_at'] for x in leads if x['status'] == 'scheduled'), "OFF")
+    
+    msg = (f"📊 **Tacloban HQ Audit**\n"
+           f"📂 Total: {len(leads)} | ⏳ Pend: {pending}\n"
+           f"✅ Daily: {daily} | 📱 Accs: {len(glob.glob('*.session'))-1}\n"
+           f"📅 Sched: {sched}\n"
+           f"🚀 Engine: {'RUNNING' if sets['is_sending_active'] or sets['is_sched_active'] else 'HALTED'}")
     await event.respond(msg)
+
+@bot.on(events.NewMessage(pattern='/schedule'))
+async def toggle_sched(event):
+    sets = get_settings()
+    if sets['is_sched_active']:
+        supabase.table("bot_settings").update({"is_sched_active": False}).eq("id", "production").execute()
+        supabase.table("message_campaign").delete().eq("status", "scheduled").execute()
+        await event.respond("⏸️ **Schedule Cleared. All cycles paused.**")
+    else:
+        async with bot.conversation(event.sender_id) as conv:
+            await conv.send_message("📅 **Enter Start Time (e.g. 2026-04-24 10:00 PM):**")
+            r = (await conv.get_response()).text
+            try:
+                local_dt = PHT.localize(datetime.strptime(r, '%Y-%m-%d %I:%M %p'))
+                supabase.table("bot_settings").update({"is_sched_active": True}).eq("id", "production").execute()
+                supabase.table("message_campaign").insert({"add_list": "SCHEDULE_MARKER", "status": "scheduled", "updated_at": local_dt.isoformat()}).execute()
+                await event.respond(f"✅ **Schedule Set:** {r} PHT")
+            except: await event.respond("❌ Format: YYYY-MM-DD HH:MM AM/PM")
+
+@bot.on(events.NewMessage(pattern='/add_list'))
+async def add_list(event):
+    async with bot.conversation(event.sender_id) as conv:
+        await conv.send_message("📂 **Paste List (@, Link, or Raw):**")
+        r = await conv.get_response()
+        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', r.text)))
+        existing = [x['add_list'] for x in supabase.table("message_campaign").select("add_list").execute().data]
+        valid = []
+        
+        await event.respond(f"🔍 Filtering {len(found)} leads for quality...")
+        s_acc = sorted([f for f in glob.glob("*.session") if "bot.session" not in f])[0].replace(".session","")
+        async with TelegramClient(s_acc, API_ID, API_HASH) as client:
+            for u in found:
+                if u in existing: continue
+                try:
+                    await asyncio.sleep(1.2)
+                    u_info = await client(functions.users.GetFullUserRequest(id=u))
+                    user = u_info.users[0]
+                    if user.bot or user.deleted: continue
+                    if isinstance(user.status, (types.UserStatusOnline, types.UserStatusRecently, types.UserStatusLastWeek)):
+                        valid.append({"add_list": u, "status": "pending"})
+                except: continue
+        
+        if valid: supabase.table("message_campaign").insert(valid).execute()
+        await event.respond(f"✅ Verified & Added {len(valid)} unique leads.")
 
 @bot.on(events.NewMessage(pattern='/edit_msg'))
 async def edit_msg(event):
@@ -68,19 +113,7 @@ async def edit_msg(event):
         await conv.send_message("📝 **Paste New Promo Script:**")
         r = await conv.get_response()
         supabase.table("bot_settings").update({"current_promo_text": r.text}).eq("id", "production").execute()
-        await event.respond("✅ **Updated.**")
-
-@bot.on(events.NewMessage(pattern='/add_list'))
-async def add_list(event):
-    async with bot.conversation(event.sender_id) as conv:
-        await conv.send_message("📂 **Paste List (@, Link, or Name):**")
-        r = await conv.get_response()
-        found = list(set(re.findall(r'(?:https?://t\.me/|@)?([a-zA-Z0-9_]{5,32})', r.text)))
-        await event.respond(f"🔍 Filtering {len(found)} leads...")
-        # Auto-detect duplicate and filter logic here...
-        for u in found:
-            supabase.table("message_campaign").upsert({"add_list": u, "status": "pending"}).execute()
-        await event.respond(f"✅ Processed {len(found)} leads.")
+        await event.respond("✅ **Promo Script Updated.**")
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
